@@ -19,6 +19,14 @@ flowchart TD
     Router --> OpenCode[OpenCode + lokální Ollama]
     Codex --> Worktree[Repository coding: worktree + verifier]
     Worktree --> Runs[(PostgreSQL runs)]
+    Worktree --> Verifier[Deterministický verifier]
+    Verifier --> RepairChief[Chief: strukturované repair rozhodnutí]
+    RepairChief --> Worktree
+    Verifier --> Independent[Nezávislé read-only review po pass]
+    Independent --> RepairChief
+    Independent --> Complete[Completed pouze po approve]
+    RepairChief --> Human[(escalations / waiting_human)]
+    Independent --> Human
     Codex --> Runs
     AGY --> Runs
     OpenCode --> Worktree
@@ -40,17 +48,30 @@ transakci provede `boss.send({ taskId })` přes Drizzle adapter a změnu na
 queued. Queueing failure ponechá pending task; retry celého volání může
 vytvořit duplicitní task.
 
-Fronta je `jonas-os.tasks.execute`, batch size 1, polling 0,5 sekundy,
-zpracování batch je serializované. Consumer zamkne task row, založí run
-a přepne task na running. Úspěch persistuje v transakci. Výjimka nebo
-vrácené success false (včetně nested workerResult) znamená failure.
-Completed task se znovu nevykonává. Retry po přerušení uzavře předchozí
-running run jako failed. Graceful shutdown čeká až 600000 ms.
+Fronta je `jonas-os.tasks.execute`, batch size 1, polling 0,5 sekundy.
+Repository coding přebírá durable `orchestrateCodingTask()`: session advisory
+lock na task, vlastní run na každý pokus, checks, Chief rozhodnutí a review.
+TaskSpec.maxAttempts se omezí globálním capem (default 3), nikoli queue retry.
+Repository jobs mají retryLimit 0 a expiration 3600 s. Waiting_human/completed
+se durable vypořádají bez throw; pg-boss completed není task verdict.
 
-`maxAttempts` se nepromítá do send options. Repository coding používá
-retryLimit 0, aby selhání verifikace znovu automaticky nevolalo Codex.
-Ostatní úkoly mají výchozí queue retry chování. Po tvrdém ukončení repository
-coding proto může zůstat running task bez automatické obnovy.
+`tasks.queueName` zachová frontu pro resume. `tasks.orchestration` drží fázi,
+latestRunId, Chief decision a recommendation. `runs.parentRunId/failureKind`
+zaznamenají původ opravy a typ selhání. `reviews` má unique runId, reviewer,
+providerFamily/model, status, strukturovaný verdict/findings a časy.
+`escalations` drží otázku/kontext/odpověď a open/resolved/cancelled; lightweight
+`orchestration_events` drží přechody bez event-sourcing frameworku.
+
+Lidská odpověď, resolved, queued a ID-only enqueue proběhnou atomicky. Chief
+odpověď interpretuje před dalším workerem; limit ani worktree se neresetují.
+Startup consumeru obnoví bezpečné checkpointy své queue. Executing/deciding/
+reviewing bez vlastníka jsou nejasná volání: eskalace bez automatické duplicity.
+Ztráta lock spojení abortuje nová volání. Externí provider může přežít tvrdý
+crash; před resume musí člověk ověřit jeho ukončení. Recovery není globální cleanup.
+
+Non-repository execution zachovává původní row-lock/run a queue retry chování.
+Graceful shutdown nadále čeká nejvýše 600000 ms.
+[Úplný state machine, opravy, schema a quota safety](repair-loop.md).
 
 ## Executory a worktrees
 
@@ -69,7 +90,8 @@ vrací true; skutečné přihlášení/binárky ověří až execution, nejde o 
 Recommendation se ukládá v tasks.chief, worker ji znovu validuje. Worktree
 vzniká před readiness, metadata se uloží před write; výběr routy aktualizuje
 runs.worker/tier/routing. Worker brief je task data v promptu. Po zahájení
-lokálního execution není fallback na jiný provider ani po failure.
+execution není fallback uvnitř stejné invocation. Chief může po uloženém
+selhání autorizovat nový pokus s jiným workerem ve stejném worktree.
 
 Codex volá `exec --json --sandbox … --skip-git-repo-check`, ignoruje stdin
 a má timeout 90000 ms. JSONL parser vrací success podle exit code, poslední
@@ -151,7 +173,8 @@ zůstávají v generation formátu. Viz
 [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs).
 
 Invalid/truncated output, tool calls a repository kontext neodvozený ze
-vstupu se odmítají typed errors. Není regex recovery ani repair loop.
+vstupu se odmítají typed errors. Plánovací výstup nemá regex recovery ani automatickou opravu.
+Repair rozhodování je samostatná schopnost `src/chief/repair.ts`, nikoli změna planGoal().
 Submission revaliduje návrh a až pak volá createTask; při queueing failure
 může zůstat pending row. Ask_human/no_action nemají persistence side effect.
 
@@ -171,3 +194,23 @@ nepersistují. Vytvořené tasky a worker výsledky se naopak ukládají do DB.
 [OpenCode milestone dokumentaci](opencode.md). CLI compatibility se ověřuje
 podle capabilities a zachování config/permissions; JSON je preferovaný,
 custom agent lze vybrat flagem nebo ověřeným `default_agent`.
+
+## Nezávislé read-only review
+
+Policy vybírá Antigravity pro OpenCode/Qwen i Codex; Codex fallback smí
+hodnotit pouze OpenCode. Provider family nesmí být stejná jako u autora.
+Reviewer dostává bounded/redigovaný snapshot včetně nových souborů, nikoli
+write-capable coding prompt. Neúplný snapshot eskaluje ještě před modelem.
+
+Nový snapshot reviewer wrapper sdílí boundedProcess/readiness infrastrukturu.
+Izolované HOME + auth-only kopie, prázdná config/MCP a macOS Seatbelt vynucují
+read-only mimo disposable runtime; další executable jsou zakázané. Nemá
+přímý přístup do task/source worktree. Cloud network slouží inference.
+Antigravity plan/sandbox/JSON schema a Codex read-only/ignore config jsou
+code-owned. Původní obecný Antigravity execution wrapper se nemění.
+
+Request_changes jde do Chief. High/critical návrh opravy zastaví člověk;
+po jeho odpovědi Chief rozhoduje znovu a TypeScript vynutí strong-coding.
+Approve může dokončit task jen s worker success a úspěšnými checks. Reviewer
+nemůže schválit selhání verifieru. Zod review schema vlastní konzistenci
+verdict/severity/findings/otázky; DB uchovává concise veřejné findings bez traces.

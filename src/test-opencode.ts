@@ -54,7 +54,11 @@ if (!ready.available) {
     const baseline = (await git(["rev-parse", "HEAD"])).stdout;
     await startQueue(queueName);
     queueCreated = true;
-    await registerTaskWorker({ queueName, cwd: source, executor: (task, cwd, options) => executeTask(task, cwd, {
+    await registerTaskWorker({ queueName, cwd: source, orchestration: {
+      reviewerAvailability: async () => ({}),
+      repair: async () => { throw new Error("Local smoke must not invoke a repair Chief."); },
+      review: async () => { throw new Error("Local smoke must not consume cloud review quota."); },
+    }, executor: (task, cwd, options) => executeTask(task, cwd, {
       ...options,
       availability: { opencode: { available: true, model: `ollama/${ready.model}` }, codex: { available: false }, antigravity: { available: false } },
       codexExecutor: async () => { throw new Error("Smoke test must never invoke Codex."); },
@@ -78,10 +82,10 @@ if (!ready.available) {
     let persisted;
     while (Date.now() < deadline) {
       const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
-      if (row?.status === "completed" || row?.status === "failed") {
+      if (row?.status === "completed" || row?.status === "failed" || row?.status === "waiting_human") {
         const [run] = await db.select().from(runs).where(eq(runs.taskId, task.id));
         const [job] = await boss.findJobs(queueName, { data: { taskId: task.id } });
-        if (job?.state === row.status) { persisted = run; break; }
+        if (job?.state === "completed") { persisted = run; break; }
       }
       await delay(100);
     }
@@ -107,7 +111,7 @@ if (!ready.available) {
     assert.equal(await readFile(join(source, "add.ts"), "utf8"), before);
     assert.equal((await git(["status", "--short"])).stdout, "");
     assert.equal((await git(["rev-parse", "HEAD"])).stdout, baseline);
-    console.log(`Real OpenCode ${ready.version} + ${ready.model}: PASS; original unchanged; all four verifier checks pass.`);
+    console.log(`Real OpenCode ${ready.version} + ${ready.model}: PASS; original unchanged; all four verifier checks pass; task waits for independent review (no cloud quota).`);
   } finally {
     const cleanupErrors: unknown[] = [];
     const cleanup = async (action: () => Promise<unknown>) => {

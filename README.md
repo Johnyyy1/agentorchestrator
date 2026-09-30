@@ -3,11 +3,12 @@
 Lokální orchestrátor úkolů v TypeScriptu. Úkol uloží do PostgreSQL, zařadí do
 trvalé fronty `pg-boss` a předá ho Codexu, Antigravity CLI nebo lokálnímu OpenCode. Volitelný
 **Chief** přes lokální Ollama navrhuje strukturované úkoly z přirozeného jazyka.
-Úkoly pro změny kódu běží v odděleném Git worktree a mají následné ověření.
+Úkoly pro změny kódu běží v odděleném Git worktree: deterministické ověření,
+omezené opravy přes Chief, nezávislé review a durable lidské eskalace.
 
 Projekt je určený pro vývojáře a lokální použití. Ovládá se přes TypeScript API
-a [spustitelné příklady](examples/). Nemá webové UI, HTTP API ani automatickou
-smyčku Chief → worker. Mastra je zatím pouze prázdný inicializační modul.
+a [spustitelné příklady](examples/). Nemá webové UI ani HTTP API. Repository
+coding má bounded repair/review smyčku; další úkol po úspěchu se neplánuje. Mastra je zatím pouze prázdný inicializační modul.
 
 ## Co potřebuješ
 
@@ -65,12 +66,13 @@ neporovnává s očekávanou hodnotou.
 | [Architektura](docs/architecture.md) | Datový tok, schéma, sandboxy a hranice Chief |
 | [Vývoj a testy](docs/development.md) | Struktura kódu, všechny npm příkazy, migrace |
 | [Řešení problémů](docs/troubleshooting.md) | Diagnostika fronty, databáze, CLI a verifikace |
+| [Opravy a eskalace](docs/repair-loop.md) | Lifecycle, nezávislé review, maxAttempts, lidské CLI a restart |
 | [Lokální OpenCode](docs/opencode.md) | Capability policy, lokální setup, fallback a security boundary |
 | [AGENTS.md](AGENTS.md) | Pokyny pro LLM včetně povinné aktualizace dokumentace |
 
 ## Současná omezení
 
-- Chief pouze plánuje; až explicitní odeslání vytvoří úkol. Capability a
+- Chief plánuje a rozhoduje o opravách; až explicitní odeslání vytvoří nový úkol. Capability a
   `workerBrief` se ukládají jako doporučení, execution router vynucuje vlastní pravidla.
 - Coding bez `repository` používá `read-only`; coding s `repository` používá
   izolovaný worktree přes Codex nebo způsobilý lokální OpenCode. Jonas OS sám necommitne, nemerguje,
@@ -78,9 +80,9 @@ neporovnává s očekávanou hodnotou.
 - Závislosti cílového projektu se do nového worktree automaticky neinstalují.
   Ověřují se existující npm/pnpm/yarn skripty; jiné technologie zatím nemají
   vlastní verifier.
-- `maxAttempts` se ukládá, ale aktuálně neřídí queue retries. Repository coding
-  má automatické opakování vypnuté; ostatní úkoly používají výchozí nastavení
-  `pg-boss`. Detaily jsou v [architektuře](docs/architecture.md).
+- Repository coding má `min(maxAttempts, JONAS_OS_MAX_ATTEMPTS)` pokusů (globální
+  default 3), jedno nezávislé review na úspěšný pokus a pg-boss retryLimit 0.
+  Waiting_human uchová práci bez dalších volání; ostatní úkoly zachovávají původní chování.
 - Docker Compose spouští pouze databázi. Worker, CLI a Ollama běží na hostu.
 
 ## Capability policy
@@ -96,8 +98,8 @@ neporovnává s očekávanou hodnotou.
 
 Limit mění `LOCAL_CODING_MAX_DIFFICULTY` (1–3). High risk nebo vyšší difficulty
 použije Codex; non-coding nesmí použít OpenCode. Local readiness failure má
-zaznamenaný fallback na Codex **před execution**. Po zahájení local execution
-není automatický retry ani handoff; worktree zůstane k inspekci. Oba coding workery sdílejí
+zaznamenaný fallback na Codex **před execution**. Po failure rozhoduje Chief o novém bounded pokusu; oprava může přejít na Codex
+ve stejném worktree. Nejde o fallback uvnitř jedné invocation. Oba coding workery sdílejí
 stejný worktree/verifier/Git/persistence pipeline.
 
 OpenCode běží per task s explicitním modelem a JSON výstupem. Dedicated agent
@@ -112,9 +114,29 @@ npm run executor:integration
 npm run opencode:test
 ```
 
-Real OpenCode **1.18.33 + qwen3.5:9b-q4_K_M** smoke prošel na tomto hostu
+Předchozí OpenCode milestone ověřil **1.18.33 + qwen3.5:9b-q4_K_M** smoke prošel na tomto hostu
 30. 9. 2026: změna pouze v izolovaném worktree, nezměněný source checkout,
 všechny čtyři verifier checks, DB routing/workspace/result persistence a cleanup.
 Readiness vrací `available: true`, `outputFormat: json`. Compatibility se ověřuje
 podle capabilities a resolved security config; omezený text fallback je dostupný
 pro CLI bez JSON. Jonas OS žádný CLI ani model automaticky neinstaluje.
+
+## Repair loop a lidská rozhodnutí
+
+Repository task dokončí až úspěšný verifier **a** nezávislé approve.
+OpenCode/Qwen hodnotí Antigravity (fallback Codex), Codex pouze Antigravity.
+Review je read-only snapshot v izolovaném macOS runtime. Nejasná/high-severity
+rozhodnutí, nedostupný reviewer, vyčerpané pokusy nebo orphaned execution
+vedou na `waiting_human`. Žádný automatický commit, push, merge či deploy.
+
+```sh
+npm run escalations:list
+npm run escalation:answer -- <escalation-UUID> "Zachovej současné API a oprav výpočet."
+npm run task:abandon -- <task-UUID>
+```
+
+Příklad: pokus 1 → test failure → Chief repair → pokus 2 ve stejném worktree
+→ checks pass → Antigravity approve → completed. Odpověď se atomicky uloží a
+vrátí existující task do fronty; Chief ji interpretuje před dalším workerem.
+Cap se odpovědí neobnovuje. [Podrobnosti a omezení](docs/repair-loop.md),
+[report implementace a ověření](docs/repair-loop-report.md).

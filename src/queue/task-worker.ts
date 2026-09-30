@@ -1,3 +1,6 @@
+import { orchestrateCodingTask, recoverCodingTasks } from "../orchestration/service.js";
+import type { OrchestrationOptions } from "../orchestration/service.js";
+import type { ExecutionResult } from "../workers/execute.js";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Job } from "pg-boss";
@@ -28,6 +31,7 @@ export async function processTaskJob(
   job: Job<unknown>,
   executor: Executor = executeTask,
   cwd = process.cwd(),
+  orchestration: OrchestrationOptions = {},
 ): Promise<void> {
   let taskId: string | undefined;
   let runId: string | undefined;
@@ -39,6 +43,12 @@ export async function processTaskJob(
     ({ taskId } = taskJobSchema.parse(job.data));
     const id = taskId;
     job.signal.throwIfAborted();
+    const [persisted] = await db.select().from(tasks).where(eq(tasks.id, id));
+    if (persisted?.category === "coding" && persisted.repository) {
+      await orchestrateCodingTask(id, { ...orchestration, cwd, signal: job.signal,
+        executor: async (spec, dir, options) => await executor(spec, dir, options) as ExecutionResult });
+      return;
+    }
 
     const task = await db.transaction(async (tx) => {
       const [row] = await tx.select().from(tasks).where(eq(tasks.id, id)).for("update");
@@ -132,12 +142,16 @@ export async function registerTaskWorker(options: {
   executor?: Executor;
   cwd?: string;
   queueName?: string;
+  orchestration?: OrchestrationOptions;
 } = {}): Promise<string> {
   const queueName = options.queueName ?? TASK_QUEUE_NAME;
   await startQueue(queueName);
+  // In-flight external calls are not idempotent. Recover checkpoints, or escalate ambiguous invocations.
+  await recoverCodingTasks({ ...options.orchestration, cwd: options.cwd ?? process.cwd(),
+    executor: async (spec, dir, executionOptions) => await (options.executor ?? executeTask)(spec, dir, executionOptions) as ExecutionResult }, queueName);
   return boss.work<unknown>(queueName, { batchSize: 1, pollingIntervalSeconds: 0.5 }, async (jobs) => {
     for (const job of jobs) {
-      await processTaskJob(job, options.executor ?? executeTask, options.cwd ?? process.cwd());
+      await processTaskJob(job, options.executor ?? executeTask, options.cwd ?? process.cwd(), options.orchestration);
     }
   });
 }
