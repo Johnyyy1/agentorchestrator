@@ -1,0 +1,50 @@
+{
+  "name": "jonas-os",
+  "version": "1.0.0",
+  "description": "Local task orchestrator with a PostgreSQL queue, Codex/Antigravity workers and an Ollama planner",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit",
+    "codex:test": "tsx src/test-codex.ts",
+    "agy:test": "tsx src/test-antigravity.ts",
+    "router:test": "tsx src/test-router.ts",
+    "executor:test": "tsx src/test-execute.ts",
+    "db:test": "tsx src/test-db.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "typecheck": "tsc --noEmit",
+    "worker": "tsx src/worker.ts",
+    "queue:test": "tsx src/test-queue.ts",
+    "worktree:test": "tsx src/test-worktree.ts",
+    "chief:check": "tsx src/check-chief.ts",
+    "chief:unit": "tsx --test src/chief/chief.test.ts src/local/ollama.test.ts",
+    "chief:test": "tsx src/test-chief.ts",
+    "opencode:check": "tsx src/check-opencode.ts",
+    "opencode:unit": "tsx --test src/local/opencode.test.ts",
+    "opencode:test": "tsx src/test-opencode.ts",
+    "capability-router:test": "tsx --test src/router/capability-router.test.ts",
+    "executor:integration": "tsx src/test-worktree.ts"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "keywords": [],
+  "type": "module",
+  "dependencies": {
+    "@mastra/core": "^1.72.0",
+    "dotenv": "^18.0.4",
+    "drizzle-orm": "^0.45.3",
+    "execa": "^10.0.1",
+    "pg": "^8.23.0",
+    "pg-boss": "^12.35.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "mastra": "^1.31.4",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

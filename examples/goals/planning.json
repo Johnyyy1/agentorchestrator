@@ -1,0 +1,7 @@
+{
+  "userGoal": "Navrhni tři konkrétní kroky pro přidání čisté TypeScript funkce clamp a jejích node:test testů. Zatím nic neimplementuj.",
+  "project": {
+    "name": "Ukázkový projekt",
+    "summary": "TypeScript ESM, npm, tsx a node:test. Zatím chci pouze plán, nikoli změny souborů."
+  }
+}

@@ -1,45 +1,118 @@
 # Jonas OS
 
-Tasks and execution runs are stored in PostgreSQL. `createTask()` persists a task and enqueues only its ID; `npm run worker` runs the background consumer on `jonas-os.tasks.execute`.
+Lokální orchestrátor úkolů v TypeScriptu. Úkol uloží do PostgreSQL, zařadí do
+trvalé fronty `pg-boss` a předá ho Codexu, Antigravity CLI nebo lokálnímu OpenCode. Volitelný
+**Chief** přes lokální Ollama navrhuje strukturované úkoly z přirozeného jazyka.
+Úkoly pro změny kódu běží v odděleném Git worktree a mají následné ověření.
 
-## Repository coding tasks
+Projekt je určený pro vývojáře a lokální použití. Ovládá se přes TypeScript API
+a [spustitelné příklady](examples/). Nemá webové UI, HTTP API ani automatickou
+smyčku Chief → worker. Mastra je zatím pouze prázdný inicializační modul.
 
-Add `repository: { path: "/absolute/path/to/repository", baseBranch: "main" }` to a coding `TaskSpec`. The base branch defaults to the local `main` branch. The source must be a clean Git working tree with a committed base branch. Missing paths, invalid branches, dirty sources and external Git clean/smudge/process filters are rejected.
+## Co potřebuješ
 
-Each task gets branch `jonas-os/task-<task-id>` and a linked worktree at `~/.jonas-os/worktrees/<task-id>`. Set `JONAS_OS_WORKTREE_DIR` to an absolute directory to change that root; it must remain outside the source repository. Existing task branches or paths are never overwritten.
+- Node.js **>=22.13**, doporučená řada **24** (`.nvmrc`), npm a Git.
+- PostgreSQL **16**, nejjednodušeji přes Docker Compose v tomto repozitáři.
+- Pro coding úkoly přihlášený **Codex CLI** v `PATH`.
+- Pro ostatní úkoly přihlášený **Antigravity CLI** (`agy`) v `PATH`.
+- Pro Chief **Ollama** s lokálním `qwen3.5:9b-q4_K_M`.
+- Pro volitelné lokální coding úkoly **OpenCode V1 + Ollama** na macOS.
 
-The run's nullable `workspace` JSON records the source repository, worktree path, branch, base branch and base commit before Codex starts. The task's nullable `repository` JSON retains execution context. Existing tasks remain valid.
+Kompletní coding workflow s OS sandboxem je ověřovaný na macOS. Ostatní
+platformy nejsou tímto repozitářem ověřené; podrobnosti a verze CLI najdeš
+v [setupu](docs/setup.md).
 
-Codex defaults to `read-only`. Repository coding explicitly selects `workspace-write` after validating the managed worktree and its Git registration. Extra writable roots, network access and writable system temporary directories are disabled; sandbox escalation is disabled. User configuration and execpolicy rules are ignored for this write invocation. Git checkout hooks are disabled by the worktree manager. Jonas OS does not commit, merge, push or deploy changes.
+## Rychlý start
 
-## Verification and results
-
-After Codex returns, verification detects npm, pnpm or yarn from `packageManager` or lockfiles and runs the available `test`, `typecheck`, `lint` and `build` scripts in that order. Missing scripts are explicitly skipped; if none exist, the result contains only skipped checks. Dependencies are never installed automatically. A freshly created worktree therefore needs dependencies provisioned explicitly if its checks require them.
-
-Verification uses the installed Codex CLI's **local `codex sandbox` command launcher**, which does not call an AI model. Commands have ignored stdin, `CI=true`, disabled network access, an isolated environment and worktree-local temporary/cache directories. Each check has a 60-second limit, bounded output and process-group cleanup on Unix. A sandbox or command failure fails verification rather than falling back to unrestricted execution. The sandbox launcher must be supported by the installed CLI/OS; it is validated on the current macOS host.
-
-The execution result includes the Codex result, verification checks (exit codes, output, timings and skips), workspace metadata, `git status --short`, changed paths, bounded `git diff --stat` and dirty/truncation flags. Completion requires Codex success and every discovered check passing. Repository coding jobs disable queue retries so a failed check never automatically invokes Codex again; other tasks retain existing queue behavior.
-
-## Explicit cleanup
-
-Successful and failed worktrees remain available for inspection. Call `removeTaskWorktree(run.workspace)` explicitly to remove a clean worktree. It validates the controlled root, task UUID, path, branch, linked-worktree registration and repository identity before using `git worktree remove`. Dirty work requires the explicit option `{ force: true }`, which discards its uncommitted changes. The branch is retained. Task-supplied arbitrary paths, symlinked worktrees and original checkouts cannot be used as cleanup targets.
-
-## Local commands
+Zprovozni a přihlas Codex podle [setupu](docs/setup.md#codex-pro-coding-úkoly),
+pak v terminálu:
 
 ```sh
+git clone https://github.com/Johnyyy1/agentorchestrator.git
+cd agentorchestrator
+# S nvm: nvm install && nvm use
+npm ci
+cp .env.example .env
+docker compose up -d postgres
+docker compose exec postgres pg_isready -U jonas -d jonas_os
 npm run db:migrate
+npm run typecheck
+npm test
 npm run worker
 ```
 
-Verification:
+Pokud `pg_isready` ještě hlásí start databáze, počkej a zopakuj kontrolu před
+migrací. Worker vypíše `Jonas OS worker ready; listening on jonas-os.tasks.execute`.
+Nech ho běžet a ve druhém terminálu ze stejného adresáře odešli první úkol:
 
 ```sh
-npm run typecheck
-npm run router:test
-npm run db:test
-npm run queue:test
-npm run worktree:test
+npx tsx examples/create-task.ts examples/tasks/read-only.json
+npx tsx examples/inspect-task.ts <ID-vypsané-při-vytvoření>
 ```
 
-Queue and worktree tests use fake executors; the CLI permission/parser check uses a fake executable. The worktree test creates a disposable repository and baseline commit, tests successful and failed verification, protects the original checkout, tests timeout/sandbox/cleanup guards, and explicitly removes its fixtures. These tests consume no AI subscription quota.
-# orchestrator
+První příklad volá skutečný Codex v režimu `read-only` a může čerpat kvótu jeho
+účtu. Stav `queued` znamená čekání na worker; kontrolu zopakuj až do
+`completed` nebo `failed`. Výsledek je v `runs[].result.workerResult`.
+`acceptanceCriteria` jsou instrukce pro model, text odpovědi se automaticky
+neporovnává s očekávanou hodnotou.
+
+## Dokumentace
+
+| Dokument | Obsah |
+| --- | --- |
+| [Setup](docs/setup.md) | Instalace, CLI účty, `.env`, databáze, Chief, aktualizace |
+| [Používání](docs/usage.md) | Zadávání úkolů, routování, výsledky, worktrees a úklid |
+| [Architektura](docs/architecture.md) | Datový tok, schéma, sandboxy a hranice Chief |
+| [Vývoj a testy](docs/development.md) | Struktura kódu, všechny npm příkazy, migrace |
+| [Řešení problémů](docs/troubleshooting.md) | Diagnostika fronty, databáze, CLI a verifikace |
+| [Lokální OpenCode](docs/opencode.md) | Capability policy, lokální setup, fallback a security boundary |
+| [AGENTS.md](AGENTS.md) | Pokyny pro LLM včetně povinné aktualizace dokumentace |
+
+## Současná omezení
+
+- Chief pouze plánuje; až explicitní odeslání vytvoří úkol. Capability a
+  `workerBrief` se ukládají jako doporučení, execution router vynucuje vlastní pravidla.
+- Coding bez `repository` používá `read-only`; coding s `repository` používá
+  izolovaný worktree přes Codex nebo způsobilý lokální OpenCode. Jonas OS sám necommitne, nemerguje,
+  nepushuje a nenasazuje změny.
+- Závislosti cílového projektu se do nového worktree automaticky neinstalují.
+  Ověřují se existující npm/pnpm/yarn skripty; jiné technologie zatím nemají
+  vlastní verifier.
+- `maxAttempts` se ukládá, ale aktuálně neřídí queue retries. Repository coding
+  má automatické opakování vypnuté; ostatní úkoly používají výchozí nastavení
+  `pg-boss`. Detaily jsou v [architektuře](docs/architecture.md).
+- Docker Compose spouští pouze databázi. Worker, CLI a Ollama běží na hostu.
+
+## Capability policy
+
+| Capability | Worker |
+| --- | --- |
+| local-coding | OpenCode + Qwen, coding s repository, risk low/medium a difficulty ≤2 |
+| strong-coding | Codex |
+| strong-general | Antigravity pro |
+| research | Antigravity |
+| local-utility / independent-review | Původní category fallback; nové execution paths jsou odložené |
+| Bez doporučení | Původní router |
+
+Limit mění `LOCAL_CODING_MAX_DIFFICULTY` (1–3). High risk nebo vyšší difficulty
+použije Codex; non-coding nesmí použít OpenCode. Local readiness failure má
+zaznamenaný fallback na Codex **před execution**. Po zahájení local execution
+není automatický retry ani handoff; worktree zůstane k inspekci. Oba coding workery sdílejí
+stejný worktree/verifier/Git/persistence pipeline.
+
+OpenCode běží per task s explicitním modelem a JSON výstupem. Dedicated agent
+zakazuje shell, externí files, web a subagents; macOS OS sandbox vynucuje
+worktree write boundary. Používá stejné Qwen jako Chief a budget 16k.
+Podrobnosti, konfigurace a omezení V1 jsou v [OpenCode dokumentaci projektu](docs/opencode.md).
+
+```sh
+npm run opencode:check
+npm run capability-router:test
+npm run executor:integration
+npm run opencode:test
+```
+
+Real OpenCode smoke je zatím **blokovaný**: na aktuálním hostu nebyla nalezena
+CLI binárka (`binary_missing`). Qwen/Ollama a fake integration jsou ověřené;
+OpenCode verze, native discovery a skutečná inference musí být ověřeny po
+nastavení existujícího CLI. Jonas OS žádný CLI ani model automaticky neinstaluje.
