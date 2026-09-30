@@ -78,7 +78,7 @@ test("submission revalidates, maps TaskSpec, reports recommendations, and never 
     assert.deepEqual(taskSpecSchema.parse(spec), task);
     assert.equal(queueName, "isolated");
     assert.deepEqual(recommendation, { capability: create.capability, workerBrief: create.workerBrief });
-    return { ...taskSpecSchema.parse(spec), chief: { capability: "local-coding" as const, workerBrief: create.workerBrief }, repository: task.repository, id: "fake", status: "queued", createdAt: new Date(), updatedAt: new Date() };
+    return { ...taskSpecSchema.parse(spec), chief: { capability: "local-coding" as const, workerBrief: create.workerBrief }, repository: task.repository, queueName: "isolated", orchestration: null, id: "fake", status: "queued", createdAt: new Date(), updatedAt: new Date() };
   };
   const options = { createTask, queueName: "isolated" };
   assert.deepEqual(await submitDecision(ask, options), { action: "ask_human", humanQuestion: ask.humanQuestion });

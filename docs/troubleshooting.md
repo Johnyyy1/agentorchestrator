@@ -38,7 +38,9 @@ npx tsx examples/inspect-task.ts <task-UUID>
 ```
 
 Čti runs[].error, workerResult, verification a workspace. Repository coding
-má retries vypnuté, worktree zůstává. maxAttempts není limit queue retries.
+má queue retries vypnuté, worktree zůstává. Opravy řídí aplikace podle
+min(maxAttempts, JONAS_OS_MAX_ATTEMPTS). Restart bezpečný checkpoint obnoví,
+nejasnou executing/reviewing/deciding invocation převede na waiting_human.
 Nové zadání vytvoří nový task/worktree; nejdřív inspectuj starou práci.
 Hromadné přepisování statusů neskrývá nedokončenou execution.
 
@@ -99,7 +101,8 @@ Začni bez inference: `ollama list` a `npm run chief:check`.
 | submission_failed | DB/queue health, retained pending row před retry |
 
 Chief nedohledává chybějící soubory či informace. ask_human není chyba;
-doplň odpověď do nového vstupu. LOCAL_CHIEF_MODEL nemění cloud modely; local coding ho používá jako default,
+u plánovacího planGoal doplň odpověď do nového vstupu. U repair loop použij
+escalation:answer pro existující durable task. LOCAL_CHIEF_MODEL nemění cloud modely; local coding ho používá jako default,
 pokud není zadaný LOCAL_CODING_MODEL.
 Detaily formátu/validace jsou v [architektuře](architecture.md#lokální-chief).
 
@@ -115,8 +118,9 @@ chybějící macOS OS hranici nebo selhání startu CLI uvnitř sandboxu. config
 Při nedostupném OpenCode se způsobilý task před execution přesměruje na Codex.
 Skutečný výběr a důvod jsou v runs.routing, ne jen v počáteční worker logu.
 Task bez recommendation nebo bez repository nikdy nejde na OpenCode.
-Chyba po startu lokálního workeru nepředává partial edits Codexu; inspectuj
-workerResult.error/timedOut a worktree. Lokální worker má shell zakázaný,
+Chyba po startu lokálního workeru nepoužívá inline fallback; Chief může
+navrhnout nový bounded repair pokus v témže worktree, i přes Codex. Inspectuj
+workerResult.error/timedOut, repair events a worktree. Lokální worker má shell zakázaný,
 testy spouští až samostatný verifier.
 
 OpenCode 1.18.33 píše `run --help` do stderr; detekce čte oba streamy.
@@ -125,3 +129,24 @@ CLI skončit SIGTRAP ještě před inferencí. Tato výjimka nepovoluje další 
 ani externí síť.
 Fake parser/adapter a OS fixture testy nenahrazují `npm run opencode:test`.
 [Podrobný stav ověření a lokální setup](opencode.md#testy-a-aktuální-stav-ověření).
+
+## Waiting_human a review
+
+```sh
+npm run escalations:list
+npx tsx examples/inspect-task.ts <task-UUID>
+npm run escalation:answer -- <escalation-UUID> "Upřesnění rozhodnutí."
+```
+
+- max_attempts: cap se odpovědí nemění. Inspectuj práci, pak task:abandon nebo nový task.
+- Reviewer unavailable: coding po Codexu vyžaduje Antigravity, nikoli další Codex.
+- Review failed: čti reviews.error, CLI přihlášení, podporované flags a macOS sandbox.
+  Snapshot-only reviewer má izolované auth/config; nestandardní auth storage může selhat.
+- Neúplný snapshot: rozsáhlé diffy, secrets/symlinky či velké nové soubory vyžadují lidskou kontrolu.
+- High/critical: odpověď musí upřesnit autorizované hranice; Chief znovu rozhodne.
+- Interrupted: ověř, že starý provider už neběží. Automatické replay je úmyslně zakázané.
+- Queue completed, task waiting_human: job zpracoval durable stop; task dokončený není.
+
+Answer musí cílit na open eskalaci; resolved/cancelled či prázdná odpověď se odmítá.
+Při enqueue failure zůstává open/waiting_human, transakce nepersistuje půl výsledku.
+Worktree nikdy automaticky nemaž; [podrobné limity a recovery](repair-loop.md).

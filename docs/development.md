@@ -6,7 +6,10 @@
 | --- | --- |
 | src/tasks/ | Zod TaskSpec, DB rows, createTask |
 | src/router/ | Legacy + capability route, recommendation a readiness |
-| src/workers/ | CLI wrappers a orchestrace |
+| src/workers/ | CLI wrappers a jeden implementation/verifier pokus |
+| src/orchestration/ | Durable lifecycle, checkpointy, audit, cap a integration tests |
+| src/review/ | Nezávislost, read-only snapshot adapter, prompt/schema |
+| src/escalations/ | Open/answer/abandon service a minimální CLI |
 | src/worker.ts | Start a graceful shutdown consumeru |
 | src/queue/ | pg-boss, processing a persistence runů |
 | src/db/ | Drizzle schéma a PostgreSQL pool |
@@ -27,7 +30,7 @@ přes tsx. Typecheck nic neemituje. Není build, lint, dev server ani deploy.
 | Příkaz (`npm run …`) | Závislosti a účinky |
 | --- | --- |
 | typecheck | Kontrola TS včetně examples; bez DB/modelů |
-| test (`npm test`) | chief:unit + router:test + capability-router:test + opencode:unit; bez reálné DB/modelů |
+| test (`npm test`) | chief:unit + router:test + capability-router:test + opencode:unit + repair:unit + reviewer:test; bez reálné DB/modelů |
 | router:test | Routovací příklady; bez AI/DB |
 | chief:unit | node:test schémat/bridge a local HTTP fixtures; bez inference |
 | db:generate | Generuje migrace; config vyžaduje DATABASE_URL |
@@ -45,6 +48,14 @@ přes tsx. Typecheck nic neemituje. Není build, lint, dev server ani deploy.
 | opencode:check | Binárka, capabilities/config, sandbox startup, lokální model discovery; bez inference/downloadu |
 | opencode:unit | Fake OpenCode + HTTP fixtures, parser/permissions a reálná macOS OS hranice |
 | opencode:test | Reálný lokální coding smoke v disposable repo + DB/queue persistence, žádný cloud fallback |
+| repair:unit | Strict repair schema/bridge, state/cap/redakce, fake Ollama; bez skutečné inference |
+| repair:smoke | Jedna bounded skutečná Ollama repair inference, bez DB/cloud workerů |
+| reviewer:test | Policy/schema/parser, macOS OS fixture a native fake CLI (vyžaduje cc); bez cloud inference |
+| orchestration:test | DB/Git/verifier, fake worker/reviewer/Chief; scénáře A–K a safety |
+| escalation:test | Alias orchestration:test; navíc transactional answer/resume/abandon assertions |
+| escalations:list | Read-only DB výpis otevřených eskalací |
+| escalation:answer | Resolve/odpověď + atomický enqueue existujícího tasku |
+| task:abandon | Explicitní failed/cancelled pro waiting_human, worktree zůstane |
 | executor:integration | Alias worktree:test; fake Codex/OpenCode, reálná DB/Git/verifier |
 
 `npm test` je základní kontrola bez cloud kvóty a DB. Ollama fixture testy
@@ -63,6 +74,7 @@ npm run db:migrate
 npm run db:test
 npm run queue:test
 npm run worktree:test
+npm run orchestration:test
 ```
 
 Queue/worktree testy používají vlastní unikátní queue a uklízejí své tasky,
@@ -88,3 +100,16 @@ odstraní. Nikdy nevolá execution providery. Potřebuje Ollama, model i DB.
 Závislosti měň přes npm, commitni manifest i lockfile. Novou env proměnnou
 přidej do `.env.example` i [setupu](setup.md). Limity dokumentuj podle kódu.
 Žádný test/migrace nyní automaticky neběží v GitHub Actions.
+
+## Ověřování repair loop
+
+Fake workers používají skutečné worktrees a sandboxovaný verifier; žádný
+Codex/Antigravity model. Fake review/Chief output se revaliduje stejně jako
+produkční. Orchestration integration používá vlastní queue/tasky a cascade
+cleanup historie, ověřuje A–K, partial edit → strong repair, high severity,
+malformed outputs, caps, stejné workspace, advisory lock a orphan recovery.
+
+Reviewer unit test skutečně odmítá original/worktree/symlink writes a shell
+execution. Readiness --help v izolovaném runtime nevolá model. Reálná cloud
+review inference se v regresích nespouští; auth a provider JSON envelope jiné
+CLI verze musí být ověřené zvlášť. [Aktuální report](repair-loop-report.md).

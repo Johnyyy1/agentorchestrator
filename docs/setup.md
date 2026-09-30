@@ -170,6 +170,7 @@ nevolá AI ani cloud. Pro dobrovolný test se skutečným lokálním modelem slo
 | `DATABASE_URL` | Žádný v kódu; ukázka v `.env.example` | Povinná pro DB, migrace, frontu a worker |
 | `AGY_FLASH_MODEL` | CLI default | Model běžných non-coding úkolů |
 | `AGY_PRO_MODEL` | CLI default | Model non-coding s difficulty >=4 nebo risk high |
+| `JONAS_OS_MAX_ATTEMPTS` | `3` | Integer 1–3; repository worker pokusy včetně oprav, min s TaskSpec.maxAttempts |
 | `JONAS_OS_WORKTREE_DIR` | `~/.jonas-os/worktrees` | Absolutní cesta mimo všechny checkouty source repo |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Jen HTTP loopback: 127.0.0.1, localhost, ::1; bez credentials/path/query |
 | `LOCAL_CHIEF_MODEL` | `qwen3.5:9b-q4_K_M` | Nainstalovaný lokální generation model |
@@ -227,3 +228,27 @@ nenahrazuje CLI. Jonas OS nepoužívá uživatelův OpenCode config/auth a nesta
 provider packages. Adapter ověřuje požadovaný config/permissions a macOS OS boundary;
 nekompatibilní config nebo discovery bezpečně odmítne a policy zaznamená Codex fallback.
 Migraci nullable `tasks.chief` a `runs.routing` aplikuje `npm run db:migrate`.
+
+Pro native fake reviewer CLI test je navíc potřeba C compiler (`cc`, na macOS
+z Command Line Tools). Produkční worker tento compiler nepoužívá.
+
+## Nezávislé review a repair loop
+
+Aplikuj novou Drizzle migraci přes `npm run db:migrate`; žádný db push.
+Pro opravy potřebuje worker lokální Chief/Ollama a pro dokončení repository
+coding také nezávislého reviewera. OpenCode/Qwen → Antigravity (fallback Codex);
+Codex → Antigravity. Bez dostupného reviewera task přejde na waiting_human.
+
+Reviewer boundary nyní vyžaduje macOS sandbox-exec. CLI musí podporovat
+read-only/plan flags a startovat uvnitř sandboxu. Readiness zkouší jen --help,
+nikoli inferenci. Auth zůstává ze stávajícího přihlášení: privátní kopie Codex
+`auth.json` (z CODEX_HOME nebo standardní složky) / Antigravity standalone OAuth
+tokenu. Projektové/global config, MCP a další uživatelské soubory se nepřebírají.
+Jiná auth storage nebo změněné CLI musí dostat kompatibilní integraci; neúspěch
+vede na člověka, nikoli na uvolnění oprávnění. Reálná cloud review inference
+nebyla v regresích tohoto milníku spuštěna.
+
+Limit `JONAS_OS_MAX_ATTEMPTS=3` znamená nanejvýš tři pokusy včetně prvního;
+TaskSpec může stanovit nižší limit. Chief ani resume cap nezvyšují.
+LOCAL_CODING_*/OPENCODE_BIN a původní capability eligibility jsou beze změny.
+[CLI lidských eskalací a restart](repair-loop.md).

@@ -44,8 +44,8 @@ function validateConfig(config: OllamaConfig): OllamaConfig {
   return { ...config, baseUrl: url.origin };
 }
 
-async function request(config: OllamaConfig, path: string, body?: unknown, readiness = false): Promise<unknown> {
-  const signal = AbortSignal.timeout(readiness ? Math.min(config.timeoutMs, 5000) : config.timeoutMs);
+async function request(config: OllamaConfig, path: string, body?: unknown, readiness = false, externalSignal?: AbortSignal): Promise<unknown> {
+  const signal = AbortSignal.any([AbortSignal.timeout(readiness ? Math.min(config.timeoutMs, 5000) : config.timeoutMs), ...(externalSignal ? [externalSignal] : [])]);
   try {
     const response = await fetch(`${config.baseUrl}${path}`, {
       method: body === undefined ? "GET" : "POST", redirect: "error", signal,
@@ -105,7 +105,7 @@ const chatSchema = z.object({
 });
 export async function generateStructured(
   messages: Array<{ role: "system" | "user"; content: string }>,
-  schema: Record<string, unknown>, config = getOllamaConfig(),
+  schema: Record<string, unknown>, config = getOllamaConfig(), signal?: AbortSignal,
 ): Promise<{ content: string; usage: OllamaUsage }> {
   config = validateConfig(config);
   const ready = await checkOllama(config);
@@ -114,7 +114,7 @@ export async function generateStructured(
     model: config.model, messages, format: schema, stream: false,
     ...(ready.supportsThinking ? { think: false } : {}),
     keep_alive: "5m", options: { temperature: 0, num_ctx: config.context, num_predict: 3072 },
-  }));
+  }, false, signal));
   if (!response.success) throw new OllamaError("bad_response", "Ollama returned an incomplete or invalid chat response.");
   const result = response.data;
   if (result.done_reason === "length" || result.message.tool_calls?.length) {

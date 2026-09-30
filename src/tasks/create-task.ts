@@ -16,7 +16,7 @@ export async function createTask(
 ): Promise<typeof tasks.$inferSelect> {
   const spec = taskSpecSchema.parse(task);
   const chief = recommendation === undefined ? null : recommendationSchema.parse(recommendation);
-  const [created] = await db.insert(tasks).values({ ...spec, chief, status: "pending" }).returning();
+  const [created] = await db.insert(tasks).values({ ...spec, chief, queueName, status: "pending" }).returning();
   if (!created) throw new Error("Task insert did not return a row.");
 
   try {
@@ -24,8 +24,8 @@ export async function createTask(
     const { queued, jobId } = await db.transaction(async (tx) => {
       const jobId = await boss.send(queueName, { taskId: created.id } satisfies TaskJob, {
         db: fromDrizzle(tx, sql),
-        // Verification failure is terminal for now; never call Codex again automatically.
-        ...(spec.category === "coding" && spec.repository ? { retryLimit: 0 } : {}),
+        // Application orchestration owns coding repairs, never pg-boss retries.
+        ...(spec.category === "coding" && spec.repository ? { retryLimit: 0, expireInSeconds: 3600 } : {}),
       });
       if (!jobId) throw new Error("pg-boss did not return a job ID.");
 

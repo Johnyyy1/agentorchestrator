@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { eligibleForLocalCoding, routeCapability } from "../router/capability-router.js";
 import type { ProviderAvailability, RoutingMetadata } from "../router/capability-router.js";
 import { providerAvailability } from "../router/provider-availability.js";
@@ -9,7 +10,7 @@ import { buildLocalCodingPrompt } from "./local-coding-prompt.js";
 import { runCodex } from "./codex.js";
 import { runAntigravity } from "./antigravity.js";
 import { randomUUID } from "node:crypto";
-import { createTaskWorktree, inspectTaskWorktree } from "../git/worktree.js";
+import { assertTaskWorktree, createTaskWorktree, inspectTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree, WorktreeInspection } from "../git/worktree.js";
 import { verifyWorktree } from "../verification/verifier.js";
 import type { VerificationResult } from "../verification/verifier.js";
@@ -24,6 +25,7 @@ export type ExecutionResult = {
   route: WorkerRoute;
   workerResult: unknown;
   success?: boolean;
+  workerStarted?: boolean;
   workspace?: TaskWorktree;
   verification?: VerificationResult;
   git?: WorktreeInspection;
@@ -33,6 +35,8 @@ export type ExecutionResult = {
 
 export type ExecutionOptions = {
   taskId?: string;
+  workspace?: TaskWorktree;
+  onWorkerStarting?: () => Promise<void>;
   signal?: AbortSignal;
   codexExecutor?: typeof runCodex;
   opencodeExecutor?: typeof runOpenCode;
@@ -112,10 +116,16 @@ export async function executeTask(
   const capability = recommendation?.capability;
   options.signal?.throwIfAborted();
   // Create once, before readiness/routing, and persist before either coding worker writes.
-  const workspace = task.category === "coding" && task.repository
-    ? await createTaskWorktree(task.repository, options.taskId ?? randomUUID()) : undefined;
+  if (options.workspace) {
+    await assertTaskWorktree(options.workspace);
+    if (options.workspace.taskId !== options.taskId || !task.repository || options.workspace.repositoryPath !== await realpath(task.repository.path)) {
+      throw new Error("Existing workspace does not belong to this task/repository.");
+    }
+  }
+  const workspace = options.workspace ?? (task.category === "coding" && task.repository
+    ? await createTaskWorktree(task.repository, options.taskId ?? randomUUID()) : undefined);
   let route: WorkerRoute | undefined;
-  const result: ExecutionResult = { task, route: { worker: "codex", reason: "Route not resolved." }, workerResult: null, success: false,
+  const result: ExecutionResult = { task, route: { worker: "codex", reason: "Route not resolved." }, workerResult: null, success: false, workerStarted: false,
     ...(workspace ? { workspace } : {}) };
   try {
     if (workspace) await options.onWorkspaceCreated?.(workspace);
@@ -133,6 +143,9 @@ export async function executeTask(
     if (workspace) {
       const started = performance.now();
       console.info("Coding worker start:", JSON.stringify({ taskId: workspace.taskId, worker: route.worker, model: result.routing.model }));
+      await options.onWorkerStarting?.();
+      options.signal?.throwIfAborted();
+      result.workerStarted = true;
       const workerResult = route.worker === "opencode"
         ? await (options.opencodeExecutor ?? runOpenCode)(buildLocalCodingPrompt(task, recommendation?.workerBrief), workspace.path,
             { workspace, ...(options.signal ? { signal: options.signal } : {}) })
@@ -140,7 +153,7 @@ export async function executeTask(
             `${prompt}\n\nWORKSPACE SAFETY\n- Work only in this isolated task workspace.\n- Do not commit, push, merge, or edit the original repository.`, workspace.path,
             { mode: "workspace-write", workspace, ...(options.signal ? { signal: options.signal } : {}) });
       result.workerResult = workerResult;
-      // Worker failure is terminal: verify and inspect, but never hand off partial edits.
+      // Every attempt verifies independently; application orchestration decides repairs.
       result.verification = await verifyWorktree(workspace, options.signal ? { signal: options.signal } : {});
       result.success = workerResult.success && result.verification.success;
       if (!result.success) result.error = workerResult.success ? "Deterministic verification failed." : `${route.worker} execution failed.`;
@@ -167,6 +180,10 @@ export async function executeTask(
   } catch (error) {
     result.success = false;
     result.error = error instanceof Error ? error.message : String(error);
+    if (workspace && result.workerStarted && !result.verification && !options.signal?.aborted) {
+      try { result.verification = await verifyWorktree(workspace, options.signal ? { signal: options.signal } : {}); }
+      catch { /* Preserve the worker failure and workspace even if verification cannot start. */ }
+    }
     // Keep legacy exception behavior outside the repository execution pipeline.
     if (!workspace) throw error;
   }

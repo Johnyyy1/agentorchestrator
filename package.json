@@ -4,7 +4,7 @@
   "description": "Local task orchestrator with a PostgreSQL queue, Codex/Antigravity workers and an Ollama planner",
   "main": "index.js",
   "scripts": {
-    "test": "npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit",
+    "test": "npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit && npm run repair:unit && npm run reviewer:test",
     "codex:test": "tsx src/test-codex.ts",
     "agy:test": "tsx src/test-antigravity.ts",
     "router:test": "tsx src/test-router.ts",
@@ -23,7 +23,15 @@
     "opencode:unit": "tsx --test src/local/opencode.test.ts",
     "opencode:test": "tsx src/test-opencode.ts",
     "capability-router:test": "tsx --test src/router/capability-router.test.ts",
-    "executor:integration": "tsx src/test-worktree.ts"
+    "executor:integration": "tsx src/test-worktree.ts",
+    "repair:unit": "tsx --test src/chief/repair.test.ts",
+    "reviewer:test": "tsx --test src/review/review.test.ts",
+    "escalation:test": "tsx --test src/orchestration/integration.test.ts",
+    "orchestration:test": "tsx --test src/orchestration/integration.test.ts",
+    "escalations:list": "tsx src/escalations/cli.ts list",
+    "escalation:answer": "tsx src/escalations/cli.ts answer",
+    "task:abandon": "tsx src/escalations/cli.ts abandon",
+    "repair:smoke": "tsx src/test-repair.ts"
   },
   "engines": {
     "node": ">=22.13.0"

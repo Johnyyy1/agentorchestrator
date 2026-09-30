@@ -50,7 +50,7 @@ async function waitForTask(id: string, status: string) {
     const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
     if (task?.status === status) {
       const jobs = await boss.findJobs(queueName, { data: { taskId: id } });
-      if (jobs[0]?.state === status) return task;
+      if (jobs[0]?.state === "completed") return task;
     }
     await delay(50);
   }
@@ -125,15 +125,19 @@ try {
 
   await startQueue(queueName);
   queueCreated = true;
-  await registerTaskWorker({ queueName, executor: (task, cwd, options) => executeTask(task, cwd, { ...options,
+  await registerTaskWorker({ queueName, orchestration: {
+    chiefModel: "fixture", repair: async () => ({ action: "ask_human", summary: "Fixture failed", reason: "Inspect retained work", humanQuestion: "What should be repaired?" }),
+    reviewerAvailability: async () => ({ antigravity: { available: true, model: "fixture-google" } }),
+    review: async () => ({ decision: "approve", summary: "Fixture satisfies objective", severity: "none", findings: [] }),
+  }, executor: (task, cwd, options) => executeTask(task, cwd, { ...options,
     codexExecutor: fakeCodex, opencodeExecutor: fakeOpenCode,
     availability: task.title.includes("Unavailable local fallback")
       ? { ...availability, opencode: { available: false, reason: "fixture model unavailable" } } : availability,
   }) });
   for (const [title, expected, worker] of [
-    ["Verification success fixture", "completed", "codex"], ["Verification failure fixture", "failed", "codex"],
-    ["OpenCode success fixture", "completed", "opencode"], ["OpenCode verification failure", "failed", "opencode"],
-    ["OpenCode execution failure", "failed", "opencode"], ["OpenCode thrown failure", "failed", "opencode"],
+    ["Verification success fixture", "completed", "codex"], ["Verification failure fixture", "waiting_human", "codex"],
+    ["OpenCode success fixture", "completed", "opencode"], ["OpenCode verification failure", "waiting_human", "opencode"],
+    ["OpenCode execution failure", "waiting_human", "opencode"], ["OpenCode thrown failure", "waiting_human", "opencode"],
     ["Unavailable local fallback", "completed", "codex"],
   ] as const) {
     const previousCalls = workerCalls.length;
@@ -144,7 +148,7 @@ try {
     await waitForTask(task.id, expected);
     const run = await persistedRun(task.id);
     const result = run.result as ExecutionResult;
-    assert.equal(run.status, expected);
+    assert.equal(run.status, expected === "completed" ? "completed" : "failed");
     assert.equal(run.worker, worker);
     assert.deepEqual(workerCalls.slice(previousCalls), [worker], "Never execute a second worker after local execution starts.");
     assert.equal(run.routing?.selectedWorker, worker);

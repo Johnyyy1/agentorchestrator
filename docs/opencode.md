@@ -3,7 +3,8 @@
 Chief přes Ollama navrhuje **capability** a `workerBrief`; nemá nástroje a nevybírá
 providera. OpenCode je samostatný execution worker: v izolovaném worktree čte
 a upravuje soubory pomocí stejného lokálního Qwen. Chiefův brief je task data,
-pevná pravidla a oprávnění vlastní TypeScript. Neexistuje automatická smyčka.
+pevná pravidla a oprávnění vlastní TypeScript. Repository coding nyní používá bounded repair/review smyčku podle
+[repair lifecycle](repair-loop.md); další úkol po úspěchu se neplánuje.
 
 ## Směrování
 
@@ -14,7 +15,7 @@ pevná pravidla a oprávnění vlastní TypeScript. Neexistuje automatická smy�
 | `strong-general` | Antigravity pro |
 | `research` | Antigravity; původní volba flash/pro podle risk/difficulty |
 | `local-utility` | Původní category route; lokální utility execution adapter zatím neexistuje |
-| `independent-review` | Zachované abstraktní doporučení; samostatný reviewer není implementovaný |
+| `independent-review` | Zachované abstraktní doporučení; samostatná capability route zůstává původní; repository coding dostává nezávislé review po verifieru |
 | Bez doporučení | Beze změny původní `routeTask()` |
 
 Coding category má přednost před neslučitelnou capability. High risk nebo
@@ -69,8 +70,8 @@ nenahrazuje ověření konkrétní instalace.
 Manager vytvoří jediný worktree a callback uloží `runs.workspace` před workerem.
 Pak proběhne capability policy a uložení skutečného selected workeru. Codex i
 OpenCode pokračují stejným `executeTask()` pipeline: worker → nezměněný
-`verifyWorktree()` → `inspectTaskWorktree()` → queue persistence.
-Completion vyžaduje worker success **i** verifier success. Všechny dostupné
+`verifyWorktree()` → `inspectTaskWorktree()` → durable orchestrace a queue persistence.
+Completion tasku vyžaduje worker success, verifier success **i nezávislé approve**. Všechny dostupné
 test/typecheck/lint/build skripty mají stejný standard pro oba workery.
 
 OpenCode ověřuje cwd přes `assertTaskWorktree()`, včetně kontrolovaného rootu,
@@ -94,9 +95,11 @@ Pokud před execution není dostupný OpenCode/Ollama/model nebo kompatibilní
 rozhraní/sandbox, policy zvolí Codex a uloží důvod. Codex/Antigravity mají původní
 execution-time health behavior; readiness pro ně nevolá model.
 
-Jakmile OpenCode invocation začne, failure/timeout/malformed output je terminální.
-Není lokální retry ani předání změněného worktree Codexu. Repository queue jobs
-mají původní `retryLimit: 0`. Výjimka adaptéru také zachová worktree a Git metadata.
+Jakmile OpenCode invocation začne, failure/timeout/malformed output ukončí tento pokus.
+Nový pokus smí autorizovat jen Chief a TypeScript v rámci min(maxAttempts,
+JONAS_OS_MAX_ATTEMPTS); může jít na Codex ve stejném worktree. Není inline
+provider fallback ani slepý queue retry. Repository jobs mají retryLimit 0.
+Výjimka adaptéru zachová worktree a Git metadata; každý pokus má vlastní run.
 
 Migrace `0002_absurd_madame_masque.sql` přidává nullable JSON `tasks.chief`
 (`capability`, `workerBrief`) a `runs.routing` (`requestedCapability`,
@@ -123,14 +126,15 @@ npm run opencode:test
 
 První tři používají fake coding adapters/CLI; verifier launcher je lokální
 `codex sandbox`, nikoli AI inference. Integration ověřuje oba workery, ukládání
-route před editací, čtyři checks, failure po editaci bez handoff a unavailable
-fallback. `opencode:unit` také skutečně ověřuje OS odmítnutí external read/write,
+route před editací, čtyři checks, failure po editaci s durable eskalací a unavailable
+fallback před execution. Nové orchestration:test navíc ověřuje autorizovaný repair handoff. `opencode:unit` také skutečně ověřuje OS odmítnutí external read/write,
 symlink escape a `.git` write, JSON/text parser, stderr help, odmítnutí
 nekompatibilního configu a timeout.
 
 `opencode:test` je jediný skutečný bounded OpenCode/Qwen smoke: vytvoří disposable
 TypeScript Git repo a unikátní pg-boss queue. Před skutečným workerem kontroluje
-persistované `runs.routing` a `runs.workspace`, po něm uložený result. Upraví
+persistované `runs.routing` a `runs.workspace`, po něm uložený result. Reviewer je v tomto local smoke záměrně nedostupný,
+takže úspěšný pokus vede na waiting_human bez cloud inference. Upraví
 pouze worktree, spustí stejný verifier a ověří nezměněný source checkout. Fixture explicitně použije již nainstalovaný TypeScript
 compiler; neinstaluje dependencies. Vyžaduje DB a uklidí vlastní queue, task/run řádky, worktree, branch a runtime.
 Při readiness failure test skončí s chybou; nikdy nespadne na cloud AI.
@@ -147,9 +151,19 @@ Uložený worker result měl sessionId, veřejnou zprávu a token totals, žádn
 všechny test/typecheck/lint/build checks prošly. Route/workspace metadata byla
 uložená před inferencí a result po dokončení. Vlastní queue, task/run rows,
 worktree/branch a runtime byly odstraněné. Žádná Codex/Antigravity inference.
-Milestone je dokončený. [Report oprav a ověření](opencode-milestone-report.md).
+To je historické ověření před přidáním nezávislého review. [Report oprav a ověření](opencode-milestone-report.md).
 
 Resolved config zachoval požadované context/output/options hodnoty; konkrétní
 účinnost každého provider resource option nebyla samostatně měřena. Ověření
 se vztahuje na tuto CLI/model/macOS kombinaci; jiná instalace musí projít readiness
 a vlastním smoke testem.
+
+## Současný repair/review milestone
+
+LOCAL_CODING_*/OPENCODE_BIN, eligibility a OpenCode sandbox se nemění.
+Pro dokončení tasku je nyní nutný nezávislý reviewer: Antigravity, fallback
+Codex pouze před inference. Qwen svůj kód neschvaluje. Verifier failure a
+review request_changes řeší samostatný Chief repair schema/prompt. Přechod
+OpenCode → Codex je záměrný až v novém bounded pokusu a nikdy v originálním
+checkoutu. Nejasný crash, vyčerpaný cap a humanQuestion vedou na waiting_human.
+[CLI, history, restart, quota a limity](repair-loop.md).

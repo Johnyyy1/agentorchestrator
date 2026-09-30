@@ -58,7 +58,7 @@ relativní importy a jsou zahrnuté v TypeScript kontrole.
 | `risk` | Ano | low, medium, high |
 | `context` | Ano | Pole stringů, může být prázdné |
 | `acceptanceCriteria` | Ano | Pole stringů, přímé API dovoluje prázdné |
-| `maxAttempts` | Ano | Integer >=1; aktuálně pouze uložená hodnota |
+| `maxAttempts` | Ano | Integer >=1; repository pokusy omezuje také globální cap 1–3 |
 | `repository` | Ne | Objekt `path` + volitelné `baseBranch` |
 
 Acceptance criteria se přidávají do promptu, nejsou automaticky vyhodnoceným
@@ -85,13 +85,13 @@ Chief recommendation nebo třetí argument `createTask(spec, queueName,
 | strong-coding | Coding zůstává na Codexu |
 | strong-general | Non-coding na Antigravity pro |
 | research | Non-coding na Antigravity s tierem podle původní náročnosti |
-| local-utility, independent-review | Samostatný adaptér není implementovaný; původní route s fallback reason |
+| local-utility, independent-review | Samostatná capability route zachovává category fallback; coding má následné nezávislé review |
 | Capability neslučitelná s kategorií | Kategorie má přednost |
 
 Přímý JSON příklad doporučení nepředává a dál používá původní route.
 Readiness fallback OpenCode → Codex probíhá pouze před vykonáváním. Po chybě
-lokálního workeru či jeho verifikace nedochází k předání částečných změn
-jinému workeru. Doporučení neuděluje sandbox výjimky.
+lokálního workeru či verifikace může Chief navrhnout nový repair pokus ve
+stejném worktree, včetně strong-coding přes Codex. Doporučení neuděluje sandbox výjimky.
 
 ## Změny repozitáře
 
@@ -205,7 +205,7 @@ npx tsx examples/inspect-task.ts <task-UUID>
 ```
 
 Výpis obsahuje task a runs od nejnovějšího. Stavy: pending (uložen, nezařazen),
-queued, running, completed, failed. Pending po queue failure je zachovaný
+queued, running, repairing, reviewing, waiting_human, completed, failed. Pending po queue failure je zachovaný
 pro diagnostiku. Task nemá vlastní `error`; čti runs[].error a worker log.
 
 Repository run má workspace metadata uložená před startem coding workeru. `runs.routing` zaznamenává capability, selected worker, fallback reason a model. Result
@@ -213,8 +213,8 @@ obsahuje workerResult, verification.checks (exit code, stdout/stderr,
 trvání, timeout/skips), git.statusShort, changedFiles, diffStat, dirty,
 truncated a případné error. `runs.routing` a `result.routing` obsahují
 requestedCapability, selectedWorker, fallbackReason, model a reason.
-Completion vyžaduje úspěch zvoleného coding workeru i všech
-objevených checks. Výpisy jsou omezené; diff stat neobsahuje untracked obsah.
+Completion repository tasku vyžaduje úspěch coding workeru, všech
+objevených checks a nezávislé review approve. Run completed značí pouze úspěšný pokus. Výpisy jsou omezené; diff stat neobsahuje untracked obsah.
 
 Worktree zůstává po úspěchu i failure. Inspectuj ho:
 
@@ -249,4 +249,28 @@ za správný `repository` context. [Failure policy a výsledky OpenCode](opencod
 Diagnostika `npm run opencode:check` vrací také `outputFormat`. OpenCode 1.18.33
 používá JSONL: result má veřejnou zprávu, sessionId a token totals. Pokud
 kompatibilní CLI JSON nenabízí, omezený text fallback ponechá sessionId/usage
-null; completion stále vyžaduje úspěšný worker i společný verifier.
+null; repository completion navíc vyžaduje nezávislé review.
+
+## Opravy a čekání na člověka
+
+`maxAttempts=2` znamená implementaci + jednu opravu. Globální
+`JONAS_OS_MAX_ATTEMPTS` (default 3, rozmezí 1–3) je tvrdý cap. Každý pokus
+má vlastní run; worktree zůstává stejný, i když oprava přejde OpenCode → Codex.
+Review findings se nejprve předají lokálnímu Chief a nezvyšují počet pokusů.
+
+OpenCode hodnotí Antigravity nebo při nedostupné readiness Codex. Codex hodnotí
+jen Antigravity. Review je read-only a při chybě nebo neúplném snapshotu se
+neopakuje. `waiting_human` je durable stop bez spotřeby další kvóty.
+
+```sh
+npm run escalations:list
+npm run escalation:answer -- <escalation-UUID> "Upřesnění kritérií a hranic změny."
+npm run task:abandon -- <task-UUID>
+```
+
+Answer potvrdí resolved a queued; existující task se vrátí do své fronty.
+Odpověď je kontext pro Chief, nikoli příkaz. Worktree a run/review historie
+zůstanou. Při vyčerpaném capu nevznikne další pokus ani po odpovědi.
+Inspect výpis nyní obsahuje i reviews, escalations, audit events a checkpoint.
+Před resuming přerušené invocation ověř, že původní provider už neběží.
+[Celý lifecycle, schema a limity](repair-loop.md).

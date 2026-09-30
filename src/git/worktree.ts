@@ -187,3 +187,37 @@ export async function removeTaskWorktree(workspace: TaskWorktree, options: { for
   await git(workspace.repositoryPath, ["worktree", "remove", ...(options.force ? ["--force"] : []), "--", workspace.path]);
   // Keep the branch; removing a workspace never deletes potentially useful commits.
 }
+
+// Snapshot only repository data, never symlink targets or common credential files.
+export async function boundedWorktreeDiff(workspace: TaskWorktree): Promise<{ diff: string; omitted: boolean }> {
+  await assertTaskWorktree(workspace);
+  const { open } = await import("node:fs/promises");
+  const inspection = await inspectTaskWorktree(workspace);
+  let diff = "";
+  let omitted = inspection.truncated || inspection.changedFiles.length > 30;
+  for (const path of inspection.changedFiles.slice(0, 30)) {
+    if (/(?:^|\/)(?:\.env(?:\..*)?|.*\.(?:pem|key|p12)|credentials.*|auth\.json|.*token.*)$/i.test(path)) { omitted = true; continue; }
+    const absolute = resolve(workspace.path, path);
+    if (!inside(workspace.path, absolute)) { omitted = true; continue; }
+    const info = await lstat(absolute).catch(() => null);
+    if (info?.isSymbolicLink() || (info && !info.isFile())) { omitted = true; continue; }
+    if (info && !inside(workspace.path, await realpath(absolute))) { omitted = true; continue; }
+    const tracked = (await git(workspace.path, ["diff", "--no-ext-diff", "--no-textconv", "--no-renames", workspace.baseCommit, "--", path])).stdout;
+    let content = tracked;
+    if (!content && info) {
+      const file = await open(absolute, "r");
+      try {
+        const buffer = Buffer.alloc(4000);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+        content = `NEW FILE ${path}\n${buffer.subarray(0, bytesRead).toString("utf8")}`;
+        if (info.size > bytesRead) omitted = true;
+      } finally { await file.close(); }
+    }
+    if (content.includes("\0")) { omitted = true; continue; }
+    const remaining = 12000 - diff.length;
+    if (content.length > remaining) omitted = true;
+    diff += content.slice(0, Math.max(0, remaining)) + "\n";
+    if (diff.length >= 12000) { omitted = true; break; }
+  }
+  return { diff: diff.slice(0, 12000), omitted };
+}
