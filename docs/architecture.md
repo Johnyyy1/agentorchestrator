@@ -97,7 +97,7 @@ oprávnění závisí na vlastním nastavení CLI.
 
 ### OpenCode
 
-V1 adaptér používá jediný provider ollama a explicitní model, JSONL output,
+Adaptér používá jediný provider ollama a explicitní model, preferovaný JSONL output,
 agent `jonas-local-coding`, max. 12 kroků, výstup 4096 tokenů. Deny-by-default
 permissions dovolují repository file tools; shell, external_directory,
 network tools, subagents, skills a LSP jsou zakázané. Project/user config,
@@ -108,11 +108,13 @@ macOS Seatbelt sandbox dovoluje zápisy jen do worktree a runtime, blokuje
 zápis worktree .git a povoluje outbound pouze na localhost port Ollama.
 Čtení má explicitní systémové/runtime/worktree/Git metadata roots; jde o
 konkrétní OS hranice doplněné tool permissions, nikoli plnou anonymizaci
-obsahu cílového repozitáře. Adaptér odmítá jiné OS a V2 bez validace jeho schématu.
+obsahu cílového repozitáře. Bun/ICU potřebuje také read-only system timezone data.
+Adaptér odmítá jiné OS a CLI, která nezachová požadovaný resolved config.
 
 Timeout je default 180 s, config 1–300 s; parser vyžaduje úspěšný exit,
 step_finish stop a veřejnou textovou zprávu. Persistuje session ID, model,
-timing a token totals; tool payload/reasoning eventy se nevracejí. Změny
+timing a token totals; tool payload/reasoning eventy se nevracejí. Text fallback
+vyžaduje exit 0 a neprázdný výstup do 64 kB, session/usage jsou null. Změny
 ověří stejný deterministický verifier jako u Codexu a worktree zůstává.
 
 ## Verifikace
@@ -165,7 +167,7 @@ dostupné, success/error code a action. onMetadata dostává stejná data;
 jeho výjimka nemění outcome. Thinking traces/prompty se nelogují ani
 nepersistují. Vytvořené tasky a worker výsledky se naopak ukládají do DB.
 
-Úplná routing tabulka, runtime limity a aktuální blokovaný stav real OpenCode
-smoke jsou v [OpenCode milestone dokumentaci](opencode.md). OpenCode parser a
-permission config jsou V1 implementace; konkrétní CLI verze/native discovery
-zůstávají bez dostupné binárky neověřené.
+Úplná routing tabulka, runtime limity a stav skutečného OpenCode smoke jsou v
+[OpenCode milestone dokumentaci](opencode.md). CLI compatibility se ověřuje
+podle capabilities a zachování config/permissions; JSON je preferovaný,
+custom agent lze vybrat flagem nebo ověřeným `default_agent`.

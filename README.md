@@ -16,7 +16,7 @@ smyčku Chief → worker. Mastra je zatím pouze prázdný inicializační modul
 - Pro coding úkoly přihlášený **Codex CLI** v `PATH`.
 - Pro ostatní úkoly přihlášený **Antigravity CLI** (`agy`) v `PATH`.
 - Pro Chief **Ollama** s lokálním `qwen3.5:9b-q4_K_M`.
-- Pro volitelné lokální coding úkoly **OpenCode V1 + Ollama** na macOS.
+- Pro volitelné lokální coding úkoly **OpenCode + Ollama** na macOS.
 
 Kompletní coding workflow s OS sandboxem je ověřovaný na macOS. Ostatní
 platformy nejsou tímto repozitářem ověřené; podrobnosti a verze CLI najdeš
@@ -103,7 +103,7 @@ stejný worktree/verifier/Git/persistence pipeline.
 OpenCode běží per task s explicitním modelem a JSON výstupem. Dedicated agent
 zakazuje shell, externí files, web a subagents; macOS OS sandbox vynucuje
 worktree write boundary. Používá stejné Qwen jako Chief a budget 16k.
-Podrobnosti, konfigurace a omezení V1 jsou v [OpenCode dokumentaci projektu](docs/opencode.md).
+Podrobnosti, konfigurace a omezení jsou v [OpenCode dokumentaci projektu](docs/opencode.md).
 
 ```sh
 npm run opencode:check
@@ -112,7 +112,9 @@ npm run executor:integration
 npm run opencode:test
 ```
 
-Real OpenCode smoke je zatím **blokovaný**: na aktuálním hostu nebyla nalezena
-CLI binárka (`binary_missing`). Qwen/Ollama a fake integration jsou ověřené;
-OpenCode verze, native discovery a skutečná inference musí být ověřeny po
-nastavení existujícího CLI. Jonas OS žádný CLI ani model automaticky neinstaluje.
+Real OpenCode **1.18.33 + qwen3.5:9b-q4_K_M** smoke prošel na tomto hostu
+30. 9. 2026: změna pouze v izolovaném worktree, nezměněný source checkout,
+všechny čtyři verifier checks, DB routing/workspace/result persistence a cleanup.
+Readiness vrací `available: true`, `outputFormat: json`. Compatibility se ověřuje
+podle capabilities a resolved security config; omezený text fallback je dostupný
+pro CLI bez JSON. Jonas OS žádný CLI ani model automaticky neinstaluje.

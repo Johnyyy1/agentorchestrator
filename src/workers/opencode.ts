@@ -4,7 +4,7 @@ import { execa } from "execa";
 import { assertTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree } from "../git/worktree.js";
 import { boundedProcess } from "../local/bounded-process.js";
-import { createOpenCodeRuntime, getOpenCodeConfig, openCodeEnvironment, resolveBinary } from "../local/opencode.js";
+import { createOpenCodeRuntime, getOpenCodeConfig, inspectOpenCodeInterface, openCodeEnvironment, resolveBinary } from "../local/opencode.js";
 import { localAgentName } from "../local/opencode-config.js";
 import { openCodeSandboxProfile } from "../local/opencode-sandbox.js";
 
@@ -17,7 +17,7 @@ export function normalizedStderr(stderr: string): string {
   return stderr.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").trim().slice(0, 64000);
 }
 
-// V1 JSONL emits text, step_finish, tool_use and error. Keep only public text
+// JSONL emits text, step_finish, tool_use and error. Keep only public text
 // and token totals; tool inputs/outputs and reasoning events never leave here.
 export function parseOpenCodeOutput(stdout: string, exitCode: number, model: string,
   durationMs: number, stderr = "", failed = false, timedOut = false): OpenCodeResult {
@@ -53,6 +53,17 @@ export function parseOpenCodeOutput(stdout: string, exitCode: number, model: str
     stderr: normalizedStderr(stderr), error, timedOut };
 }
 
+// Normal non-TTY output is public text; reasoning is never requested. Without
+// structured events, session IDs/token usage are unknown and verification is authoritative.
+export function parseOpenCodeText(stdout: string, exitCode: number, model: string,
+  durationMs: number, stderr = "", failed = false, timedOut = false): OpenCodeResult {
+  const message = normalizedStderr(stdout);
+  const success = exitCode === 0 && !failed && !timedOut && message.length > 0 && stdout.length <= 64000;
+  return { success, exitCode, message: message || null, sessionId: null, usage: null, model, durationMs,
+    stderr: normalizedStderr(stderr), timedOut,
+    error: success ? null : timedOut ? "OpenCode execution timed out." : "OpenCode text execution did not complete successfully." };
+}
+
 export async function runOpenCode(prompt: string, cwd: string, options: {
   workspace: TaskWorktree; signal?: AbortSignal;
 }): Promise<OpenCodeResult> {
@@ -65,6 +76,7 @@ export async function runOpenCode(prompt: string, cwd: string, options: {
   if (process.platform !== "darwin") throw new Error("OpenCode requires the validated macOS OS boundary.");
   const runtime = await createOpenCodeRuntime();
   try {
+    const cli = await inspectOpenCodeInterface(binary, runtime, config);
     const git = await execa("git", ["-c", "core.hooksPath=/dev/null", "rev-parse", "--git-common-dir"], {
       cwd: options.workspace.path, timeout: 5000, stdin: "ignore", extendEnv: false,
       env: { PATH: process.env.PATH ?? "", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
@@ -72,11 +84,13 @@ export async function runOpenCode(prompt: string, cwd: string, options: {
     const gitMetadata = await realpath(resolve(options.workspace.path, git.stdout));
     const result = await boundedProcess("/usr/bin/sandbox-exec", [
       "-p", openCodeSandboxProfile(options.workspace.path, runtime, binary, config.baseUrl, gitMetadata), binary,
-      "run", "--model", `ollama/${config.model}`, "--agent", localAgentName,
-      "--format", "json", "--title", `Jonas OS task ${options.workspace.taskId}`, "--", prompt,
+      "run", "--model", `ollama/${config.model}`,
+      ...(cli.agentFlag ? ["--agent", localAgentName] : []),
+      ...(cli.outputFormat === "json" ? ["--format", "json"] : []),
+      ...(cli.titleFlag ? ["--title", `Jonas OS task ${options.workspace.taskId}`] : []), "--", prompt,
     ], { cwd: options.workspace.path, env: openCodeEnvironment(runtime, config), timeoutMs: config.timeoutMs,
       ...(options.signal ? { signal: options.signal } : {}) });
-    return parseOpenCodeOutput(result.stdout, result.exitCode ?? 1, config.model,
+    return (cli.outputFormat === "json" ? parseOpenCodeOutput : parseOpenCodeText)(result.stdout, result.exitCode ?? 1, config.model,
       Math.round(performance.now() - started), result.stderr || (result.failed ? `OpenCode process failed (${result.signal ?? result.exitCode ?? "spawn error"}).` : ""), result.failed, result.timedOut ?? false);
   } catch {
     return parseOpenCodeOutput("", 1, config.model, Math.round(performance.now() - started), "Bounded OpenCode subprocess failed.", true);

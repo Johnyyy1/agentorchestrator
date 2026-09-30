@@ -44,22 +44,26 @@ opencode models
 npm run opencode:check
 ```
 
-`checkOpenCode()` vrací strukturovaný stav: binary, version, model a error code.
-Ověří binárku, verzi, flags model/agent/json, Ollama readiness, model inventory
-OpenCode a přítomnost macOS sandbox launcheru. Subprocess readiness má limity
-5/10 sekund, Ollama request maximálně 5 sekund. Nevolá AI.
+`checkOpenCode()` vrací binary, version, model, outputFormat a strukturovaný error.
+Ověří executable, verzi pro diagnostiku, option tokens z obou streamů `run --help`,
+explicitní model, resolved `debug config`, Ollama readiness/native inventory a
+start CLI uvnitř macOS sandboxu. Subprocess checks mají limity 5/10 sekund,
+Ollama request maximálně 5 sekund. Readiness neprovádí inferenci ani download.
 
-Adapter používá **V1 permission/config schema**; V2 bezpečně odmítne. Model se
-musí objevit přes native Ollama discovery v izolované konfiguraci. Není přidaný
-custom provider SDK. Provider endpoint a model budget pouze přepisují nativní
-provider. Při nepodporovaném discovery vrací `model_missing`; bezpečnostní
-nastavení se neuvolňuje. Rozdíl V1/V2 popisuje [OpenCode permissions](https://opencode.ai/v2/docs/permissions).
+Kompatibilita závisí na schopnostech a zachování bezpečnostní konfigurace,
+ne na major verzi. `debug config` musí zachovat provider allowlist, celý
+požadovaný config a dedicated agent s deny-by-default permissions. `--agent`
+není povinný: stejný agent je nastavený přes `default_agent`. JSON je preferovaný;
+bez deklarovaného JSON formátu se použije omezený non-TTY textový výstup.
+Model se musí objevit přes native Ollama discovery v izolované konfiguraci.
+Není přidaný custom provider SDK. Chybějící model vrací `model_missing`,
+nekompatibilní config `unsupported_cli`; bezpečnostní nastavení se neuvolňuje.
 
 ## Execution a bezpečnost
 
-V1 strategie je nový subprocess `opencode run --model ollama/<model> --agent
+Strategie je nový subprocess `opencode run --model ollama/<model> --agent
 jonas-local-coding --format json` pro každý task; bez attach, resume, auto nebo
-sdílené služby. Aktuální flags se kontrolují při readiness. Jejich [CLI dokumentace](https://opencode.ai/docs/cli/)
+sdílené služby. Volitelné flags se přidávají podle zjištěných capabilities. Jejich [CLI dokumentace](https://opencode.ai/docs/cli/)
 nenahrazuje ověření konkrétní instalace.
 
 Manager vytvoří jediný worktree a callback uloží `runs.workspace` před workerem.
@@ -76,7 +80,8 @@ skills, questions a LSP jsou zakázané; také auto formatters, snapshots a shar
 Agent nemůže změnit `.git` ani OpenCode configuration přes edit nástroje.
 
 Navíc macOS `sandbox-exec` povoluje data cílového worktree, read-only Git metadata,
-potřebné systémové runtime soubory a vlastní disposable runtime. Zápisy jsou
+potřebné systémové runtime soubory (včetně read-only `/private/var/db/timezone`
+pro Bun/ICU) a vlastní disposable runtime. Zápisy jsou
 omezené na worktree/runtime; `.git` pointer nelze přepsat. Symlink na source
 checkout nezpřístupní jeho obsah. Síť směřuje jen na loopback port Ollama.
 Unsupported OS execution je odmítnuta. Nástroje nikdy neobdrží uživatelův HOME,
@@ -99,7 +104,12 @@ Migrace `0002_absurd_madame_masque.sql` přidává nullable JSON `tasks.chief`
 `runs.result` uchovává worker result, routing, workspace, verification a Git diff
 metadata. OpenCode result obsahuje success, exitCode, public message, sessionId,
 explicit model, whitelisted token counts, durationMs, bounded stderr a error.
-Reasoning/tool input/output events se nepersistují. Cloud model ID je null,
+JSON parser vyžaduje exit 0, veřejný text a konečný `step_finish.reason = stop`;
+malformed, error nebo neúplný stream selže. Reasoning/tool input/output events
+se nepersistují. Text fallback vyžaduje exit 0, netimeoutovaný proces a neprázdný
+výstup do 64 kB; sessionId a usage jsou null. Thinking se nevyžaduje. Fallback
+se volí před invocation, nikoli po chybě JSON parseru. Verifier je pro oba formáty
+stejně povinný. Cloud model ID je null,
 pokud ho původní CLI path nehlásí a používá default; žádný ID se nevymýšlí.
 
 ## Testy a aktuální stav ověření
@@ -115,17 +125,31 @@ První tři používají fake coding adapters/CLI; verifier launcher je lokáln�
 `codex sandbox`, nikoli AI inference. Integration ověřuje oba workery, ukládání
 route před editací, čtyři checks, failure po editaci bez handoff a unavailable
 fallback. `opencode:unit` také skutečně ověřuje OS odmítnutí external read/write,
-symlink escape a `.git` write, JSON parser a timeout.
+symlink escape a `.git` write, JSON/text parser, stderr help, odmítnutí
+nekompatibilního configu a timeout.
 
 `opencode:test` je jediný skutečný bounded OpenCode/Qwen smoke: vytvoří disposable
-TypeScript Git repo, upraví pouze jeho worktree, spustí stejný verifier a ověří
-nezměněný source checkout. Fixture explicitně použije již nainstalovaný TypeScript
-compiler; neinstaluje dependencies. Všechny vlastní fixture změny uklidí.
+TypeScript Git repo a unikátní pg-boss queue. Před skutečným workerem kontroluje
+persistované `runs.routing` a `runs.workspace`, po něm uložený result. Upraví
+pouze worktree, spustí stejný verifier a ověří nezměněný source checkout. Fixture explicitně použije již nainstalovaný TypeScript
+compiler; neinstaluje dependencies. Vyžaduje DB a uklidí vlastní queue, task/run řádky, worktree, branch a runtime.
 Při readiness failure test skončí s chybou; nikdy nespadne na cloud AI.
 
-Na tomto hostu dne 30. 9. 2026 je Qwen/Ollama readiness ověřené. OpenCode CLI
-nebylo nalezeno, takže jeho skutečná verze, native discovery, resource options
-a OpenCode/Qwen execution **zůstávají neověřené**. `opencode:check` a real smoke
-hlásí `binary_missing`; fake CLI úspěch není důkaz funkční inference. Milestone
-vyžaduje dokončení real smoke po zpřístupnění existující CLI binárky. Nové SDK
-ani custom provider nelze správně volit bez inspekce skutečné instalace.
+Na tomto hostu dne **30. 9. 2026** prošla readiness i skutečný smoke s OpenCode
+**1.18.33** (`/opt/homebrew/Cellar/opencode/1.18.33/bin/opencode`) a
+`ollama/qwen3.5:9b-q4_K_M`. `run --help` jde do stderr; `--model`, `--agent`,
+`--format json` a `--title` skutečně fungují v izolovaném runtime/sandboxu.
+JSON i default non-TTY probe vrátily `LOCAL_OPENCODE_OK` bez nástrojů.
+
+Real coding smoke prošel za přibližně 77 sekund včetně verifieru: Qwen opravil
+`a - b` na `a + b`, změnil pouze `add.ts`, source HEAD/obsah/status zůstal stejný.
+Uložený worker result měl sessionId, veřejnou zprávu a token totals, žádný error;
+všechny test/typecheck/lint/build checks prošly. Route/workspace metadata byla
+uložená před inferencí a result po dokončení. Vlastní queue, task/run rows,
+worktree/branch a runtime byly odstraněné. Žádná Codex/Antigravity inference.
+Milestone je dokončený. [Report oprav a ověření](opencode-milestone-report.md).
+
+Resolved config zachoval požadované context/output/options hodnoty; konkrétní
+účinnost každého provider resource option nebyla samostatně měřena. Ověření
+se vztahuje na tuto CLI/model/macOS kombinaci; jiná instalace musí projít readiness
+a vlastním smoke testem.

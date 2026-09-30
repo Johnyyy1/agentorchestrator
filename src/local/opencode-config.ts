@@ -11,6 +11,7 @@ export function openCodeConfig(model: string, baseUrl: string, context: number) 
   };
   return {
     model: `ollama/${model}`, small_model: `ollama/${model}`, enabled_providers: ["ollama"],
+    default_agent: localAgentName,
     autoupdate: false, share: "disabled", snapshot: false, plugin: [], mcp: {}, lsp: false, formatter: false,
     permission,
     agent: { [localAgentName]: { description: "Jonas OS isolated local file-editing worker", mode: "primary",

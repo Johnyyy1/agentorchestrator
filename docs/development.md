@@ -42,9 +42,9 @@ přes tsx. Typecheck nic neemituje. Není build, lint, dev server ani deploy.
 | chief:check | Ollama readiness bez inference/downloadu |
 | chief:test | Dvě lokální inference + izolovaná queue integration; žádný execution provider |
 | capability-router:test | Pure policy assertions, včetně fallbacků; bez DB/modelů |
-| opencode:check | Binárka, V1 interface, lokální model discovery; bez inference/downloadu |
+| opencode:check | Binárka, capabilities/config, sandbox startup, lokální model discovery; bez inference/downloadu |
 | opencode:unit | Fake OpenCode + HTTP fixtures, parser/permissions a reálná macOS OS hranice |
-| opencode:test | Reálný lokální coding smoke v disposable repo, bez DB, žádný cloud fallback |
+| opencode:test | Reálný lokální coding smoke v disposable repo + DB/queue persistence, žádný cloud fallback |
 | executor:integration | Alias worktree:test; fake Codex/OpenCode, reálná DB/Git/verifier |
 
 `npm test` je základní kontrola bez cloud kvóty a DB. Ollama fixture testy
@@ -54,7 +54,7 @@ přihlášení providerů nebo skutečného modelu.
 
 OpenCode OS fixture vyžaduje macOS; její success
 nelze deklarovat jako ověření jiné platformy. Na ostatních OS test nedokládá funkční OS hranici. Skutečný OpenCode smoke test
-potřebuje V1 CLI, lokální model a codex sandbox; automaticky nic neinstaluje.
+potřebuje kompatibilní CLI, lokální model, DB a codex sandbox; automaticky nic neinstaluje.
 
 Pro DB/frontu/worktrees na vývojové instalaci:
 

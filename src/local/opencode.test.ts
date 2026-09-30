@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { execa } from "execa";
-import { checkOpenCode, getOpenCodeConfig } from "./opencode.js";
+import { checkOpenCode, containsOpenCodeConfig, detectOpenCodeInterface, getOpenCodeConfig } from "./opencode.js";
 import { openCodeConfig } from "./opencode-config.js";
-import { parseOpenCodeOutput, runOpenCode } from "../workers/opencode.js";
+import { parseOpenCodeOutput, parseOpenCodeText, runOpenCode } from "../workers/opencode.js";
 import { createTaskWorktree, removeTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree } from "../git/worktree.js";
 
@@ -31,6 +31,22 @@ test("JSONL parser preserves public result/totals and rejects incomplete/error/m
   for (const output of ["", "not json", events + '\n{"type":"error"}', '{"type":"text","part":{"text":"partial"}}',
     events.replace('"stop"', '"length"')]) assert.equal(parseOpenCodeOutput(output, 0, "fixture", 1).success, false);
   assert.equal(parseOpenCodeOutput(events, 0, "fixture", 1, "", true, true).success, false);
+});
+
+test("capability detection and bounded text fallback fail safely", () => {
+  assert.deepEqual(detectOpenCodeInterface(" -m, --model VALUE\n --agent AGENT\n --format [choices: default, json]"),
+    { outputFormat: "json", agentFlag: true, titleFlag: false });
+  assert.equal(detectOpenCodeInterface("--model VALUE").outputFormat, "text");
+  assert.throws(() => detectOpenCodeInterface("--models VALUE"));
+  const config = openCodeConfig("fixture", "http://127.0.0.1:11434", 16384);
+  assert.equal(containsOpenCodeConfig({ ...config, username: "fixture" }, config), true);
+  assert.equal(containsOpenCodeConfig({ ...config, permission: { ...config.permission, bash: "allow" } }, config), false);
+  assert.equal(containsOpenCodeConfig({ ...config, enabled_providers: ["ollama", "cloud"] }, config), false);
+  assert.equal(containsOpenCodeConfig({ ...config, mcp: { unexpected: { command: ["sh"] } } }, config), false);
+  assert.equal(parseOpenCodeText("LOCAL_OPENCODE_OK", 0, "fixture", 1).success, true);
+  for (const text of ["", "x".repeat(64001)]) assert.equal(parseOpenCodeText(text, 0, "fixture", 1).success, false);
+  assert.equal(parseOpenCodeText("partial", 1, "fixture", 1).success, false);
+  assert.equal(parseOpenCodeText("partial", 0, "fixture", 1, "", true, true).success, false);
 });
 
 test("agent denies shell, external paths, network tools, subagents, LSP and config edits", () => {
@@ -70,7 +86,7 @@ test("fake CLI readiness and real OS boundary: controlled cwd, external reads/wr
     process.env.OPENCODE_BIN = join(bin, "opencode");
     process.env.LOCAL_CODING_CONTEXT = "16384";
     process.env.LOCAL_CODING_TIMEOUT_MS = "1000";
-    await writeFile(process.env.OPENCODE_BIN, `#!${process.execPath}\nconst fs = require('node:fs');\nconst assert = require('node:assert/strict');\nconst args = process.argv.slice(2);\nif(args[0] === '--version') { console.log('1.2.27'); process.exit(0); }\nif(args.includes('--help')) { console.log('--model --format json --agent'); process.exit(0); }\nif(args[0] === 'models') { console.log('ollama/fixture:local'); process.exit(0); }\nassert.equal(args[0], 'run');\nassert.ok(args.includes('ollama/fixture:local'));\nassert.ok(args.includes('jonas-local-coding'));\nassert.ok(!args.includes('--auto'));\nassert.equal(process.env.OPENCODE_DISABLE_PROJECT_CONFIG, 'true');\nconst config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT);\nassert.equal(config.permission.bash, 'deny');\nassert.equal(process.env.DATABASE_URL, undefined);\nassert.equal(args.at(-1), 'literal $(touch NEVER) \\u0060test\\u0060');\nassert.throws(() => fs.writeFileSync(${JSON.stringify(join(source, 'value.txt'))}, 'unsafe'));\nassert.throws(() => fs.readFileSync(${JSON.stringify(join(source, 'value.txt'))}));\nassert.throws(() => fs.writeFileSync('escape/value.txt', 'unsafe'));\nassert.throws(() => fs.writeFileSync('.git', 'unsafe'));\nfs.writeFileSync('value.txt', 'ok');\nconsole.log(${JSON.stringify(events)});\n`);
+    await writeFile(process.env.OPENCODE_BIN, `#!${process.execPath}\nconst fs = require('node:fs');\nconst assert = require('node:assert/strict');\nconst args = process.argv.slice(2);\nif(args[0] === '--version') { console.log('1.2.27'); process.exit(0); }\nif(args.includes('--help')) { console.error('--model --format json --agent'); process.exit(0); }\nif(args[0] === 'debug') { console.log(process.env.OPENCODE_CONFIG_CONTENT); process.exit(0); }\nif(args[0] === 'models') { console.log('ollama/fixture:local'); process.exit(0); }\nassert.equal(args[0], 'run');\nassert.ok(args.includes('ollama/fixture:local'));\nassert.ok(args.includes('jonas-local-coding') || JSON.parse(process.env.OPENCODE_CONFIG_CONTENT).default_agent === 'jonas-local-coding');\nassert.ok(!args.includes('--auto'));\nassert.equal(process.env.OPENCODE_DISABLE_PROJECT_CONFIG, 'true');\nconst config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT);\nassert.equal(config.permission.bash, 'deny');\nassert.equal(process.env.DATABASE_URL, undefined);\nassert.equal(args.at(-1), 'literal $(touch NEVER) \\u0060test\\u0060');\nassert.throws(() => fs.writeFileSync(${JSON.stringify(join(source, 'value.txt'))}, 'unsafe'));\nassert.throws(() => fs.readFileSync(${JSON.stringify(join(source, 'value.txt'))}));\nassert.throws(() => fs.writeFileSync('escape/value.txt', 'unsafe'));\nassert.throws(() => fs.writeFileSync('.git', 'unsafe'));\nfs.writeFileSync('value.txt', 'ok');\nfetch(config.provider.ollama.options.baseURL.replace('/v1', '') + '/api/tags').then(async response => { assert.equal(response.status, 200); const body = await response.json(); assert.equal(body.models[0].name, 'fixture:local'); console.log(args.includes('--format') ? ${JSON.stringify(events)} : 'Function updated.'); }).catch(error => { console.error(error.code || error.cause?.code || 'network error'); process.exitCode = 1; });\n`);
     await chmod(process.env.OPENCODE_BIN, 0o700);
     assert.equal((await checkOpenCode()).available, true);
     workspace = await createTaskWorktree({ path: source }, randomUUID());
@@ -83,8 +99,16 @@ test("fake CLI readiness and real OS boundary: controlled cwd, external reads/wr
     const installedFake = process.env.OPENCODE_BIN;
     const script = await readFile(installedFake, "utf8");
     await writeFile(installedFake, script.replace("1.2.27", "2.0.0"));
-    assert.equal((await checkOpenCode()).error?.code, "unsupported_cli");
+    assert.equal((await checkOpenCode()).available, true, "Version alone does not determine config compatibility.");
     await writeFile(installedFake, script.replace("--model --format json --agent", "--model"));
+    assert.equal((await checkOpenCode()).outputFormat, "text");
+    const textResult = await runOpenCode("literal $(touch NEVER) `test`", workspace.path, { workspace });
+    assert.equal(textResult.success, true);
+    assert.equal(textResult.message, "Function updated.");
+    assert.equal(textResult.sessionId, null);
+    await writeFile(installedFake, script.replace("--model --format json --agent", "--models"));
+    assert.equal((await checkOpenCode()).error?.code, "unsupported_cli");
+    await writeFile(installedFake, script.replace("console.log(process.env.OPENCODE_CONFIG_CONTENT)", "console.log('{}')"));
     assert.equal((await checkOpenCode()).error?.code, "unsupported_cli");
     await writeFile(installedFake, script.replace("console.log('ollama/fixture:local')", "console.log('ollama/other:local')"));
     assert.equal((await checkOpenCode()).error?.code, "model_missing");
@@ -93,7 +117,7 @@ test("fake CLI readiness and real OS boundary: controlled cwd, external reads/wr
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:1";
     assert.equal((await checkOpenCode()).error?.code, "ollama_unavailable");
     process.env.OLLAMA_BASE_URL = reachableUrl;
-    await writeFile(installedFake, `#!${process.execPath}\nsetInterval(() => {}, 1000);\n`);
+    await writeFile(installedFake, script.replace("assert.equal(args[0], 'run');", "setInterval(() => {}, 1000); return;"));
     const timeout = await runOpenCode("bounded timeout", workspace.path, { workspace });
     assert.equal(timeout.success, false);
     assert.equal(timeout.timedOut, true);

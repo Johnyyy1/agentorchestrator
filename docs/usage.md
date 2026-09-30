@@ -245,3 +245,8 @@ API dovoluje `createTask(spec, undefined, { capability: "local-coding",
 workerBrief: "Malá izolovaná změna; zachovej testy." })`. TaskSpec zůstává
 beze změny; nepřidávej concrete provider do Chief decision. Caller odpovídá
 za správný `repository` context. [Failure policy a výsledky OpenCode](opencode.md#fallback-a-metadata).
+
+Diagnostika `npm run opencode:check` vrací také `outputFormat`. OpenCode 1.18.33
+používá JSONL: result má veřejnou zprávu, sessionId a token totals. Pokud
+kompatibilní CLI JSON nenabízí, omezený text fallback ponechá sessionId/usage
+null; completion stále vyžaduje úspěšný worker i společný verifier.

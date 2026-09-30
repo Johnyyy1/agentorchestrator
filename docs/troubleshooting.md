@@ -108,9 +108,9 @@ Detaily formátu/validace jsou v [architektuře](architecture.md#lokální-chief
 Začni `npm run opencode:check`. Readiness vrací available, version, model,
 binary a strukturované error. `binary_missing` znamená chybějící CLI nebo
 chybnou OPENCODE_BIN; version_failed/unsupported_cli znamená nekompatibilní
-V1 interface (V2 je explicitně odmítnutá). model_missing/models_failed
+run/model interface nebo nezachovaný resolved security config. model_missing/models_failed
 vyžaduje lokální model a Ollama discovery. sandbox_unavailable znamená
-chybějící podporovanou macOS OS hranici. configuration prověřuje env limity.
+chybějící macOS OS hranici nebo selhání startu CLI uvnitř sandboxu. configuration prověřuje env limity.
 
 Při nedostupném OpenCode se způsobilý task před execution přesměruje na Codex.
 Skutečný výběr a důvod jsou v runs.routing, ne jen v počáteční worker logu.
@@ -119,6 +119,9 @@ Chyba po startu lokálního workeru nepředává partial edits Codexu; inspectuj
 workerResult.error/timedOut a worktree. Lokální worker má shell zakázaný,
 testy spouští až samostatný verifier.
 
-OpenCode zatím nebylo na tomto hostu možné reálně spustit: binárka chybí.
+OpenCode 1.18.33 píše `run --help` do stderr; detekce čte oba streamy.
+Bun/ICU při startu potřebuje read-only `/private/var/db/timezone`, jinak může
+CLI skončit SIGTRAP ještě před inferencí. Tato výjimka nepovoluje další zápisy
+ani externí síť.
 Fake parser/adapter a OS fixture testy nenahrazují `npm run opencode:test`.
 [Podrobný stav ověření a lokální setup](opencode.md#testy-a-aktuální-stav-ověření).

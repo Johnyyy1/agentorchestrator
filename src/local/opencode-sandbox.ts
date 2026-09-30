@@ -4,7 +4,8 @@ import { dirname } from "node:path";
 // Infrastructure has a disposable runtime, never the user's HOME/auth/config.
 export function openCodeSandboxProfile(worktree: string, runtime: string, binary: string, baseUrl: string, gitMetadata?: string): string {
   const quoted = (value: string) => JSON.stringify(value);
-  const readRoots = ["/System", "/usr", "/bin", "/sbin", "/private/etc", "/dev",
+  // Bun's ICU initialization reads the system timezone database even for --version.
+  const readRoots = ["/System", "/usr", "/bin", "/sbin", "/private/etc", "/private/var/db/timezone", "/dev",
     "/Library/Apple", "/opt/homebrew", dirname(dirname(process.execPath)), worktree, runtime,
     ...(gitMetadata ? [gitMetadata] : [])];
   const url = new URL(baseUrl);

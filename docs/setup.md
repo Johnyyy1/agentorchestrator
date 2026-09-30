@@ -10,7 +10,7 @@
 | Codex CLI | `exec --json`, `--ignore-user-config`, `--ignore-rules`, `sandbox` | Coding; sandbox i ve worktree testech |
 | Antigravity CLI | `agy -p`, `--output-format json`, `--print-timeout` | Research, planning, review, utility |
 | Ollama + lokální model | `/api/tags`, `/api/show`, `/api/chat` se structured outputs | Chief a lokální OpenCode worker |
-| OpenCode V1 + Ollama | `run --model --agent --format json`, macOS sandbox-exec | Volitelný lokální coding worker |
+| OpenCode + Ollama | `run --model`, ověřený config/agent, JSON preferovaný, macOS sandbox-exec | Volitelný lokální coding worker |
 
 Node minimum vychází z požadavků závislostí. Coding sandbox byl ověřen
 na macOS s `codex-cli 0.159.2`; nejde o garanci každé starší či budoucí verze.
@@ -139,13 +139,12 @@ execution CLI, odeslání návrhu již DB potřebuje.
 
 ## Volitelný lokální coding worker
 
-Adaptér používá **OpenCode V1**, nativní provider `ollama` a macOS
-`/usr/bin/sandbox-exec`. OpenCode V2 odmítá kvůli odlišnému permission/config
-schématu. Instaluj explicitně řadu V1, ne automaticky latest; například
-existující npm verzi `npm install -g opencode-ai@1.2.27`, nebo nastav
-`OPENCODE_BIN` na absolutní cestu své V1 binárky. Samotnou instalaci popisuje
-[OpenCode dokumentace](https://opencode.ai/docs/). Tato konkrétní verze zde
-není deklarovaná jako ověřená reálným modelem; fixture testy používají fake CLI.
+Adaptér používá nativní provider `ollama` a macOS `/usr/bin/sandbox-exec`.
+Na tomto hostu je dostupná OpenCode **1.18.33** z Homebrew. Nastav `OPENCODE_BIN`
+na existující executable nebo zajisti PATH. Jonas OS nic neinstaluje.
+Kompatibilita se kontroluje podle interface a resolved bezpečnostní konfigurace,
+ne podle major verze. Samotnou instalaci popisuje
+[OpenCode dokumentace](https://opencode.ai/docs/).
 
 Připrav lokální Ollama model jako pro Chief, potom:
 
@@ -156,13 +155,13 @@ npm run opencode:check
 npm run opencode:unit
 ```
 
-Readiness neprovádí inferenci/download: ověří binárku, major V1, potřebné
-flagy, Ollama model a discovery přes `opencode models ollama`. Při chybě se
+Readiness neprovádí inferenci/download: ověří binárku, explicitní model selection, resolved
+agent/permissions, start v sandboxu, Ollama model a discovery přes `opencode models ollama`. Při chybě se
 způsobilý task **před execution** směruje na Codex, takže musí být přihlášený,
 pokud tento fallback chceš používat. Na jiné platformě je lokální cesta
 nedostupná. Verifikace OpenCode změn stále potřebuje `codex sandbox`, který
 nevolá AI ani cloud. Pro dobrovolný test se skutečným lokálním modelem slouží
-`npm run opencode:test` (disposable repo, bez DB, žádný fallback na Codex).
+`npm run opencode:test` (disposable repo a DB/queue fixture, žádný fallback na Codex).
 
 ## Proměnné prostředí
 
@@ -225,6 +224,6 @@ Nastavení `LOCAL_CODING_MODEL`, `OPENCODE_BIN`, context/timeout/difficulty
 limitů je v [lokálním coding setupu](opencode.md#konfigurace-a-readiness).
 Ověř instalovanou CLI přes `npm run opencode:check`; samotná desktop aplikace
 nenahrazuje CLI. Jonas OS nepoužívá uživatelův OpenCode config/auth a nestahuje
-provider packages. Adapter podporuje V1 permissions a macOS OS boundary;
-V2/unsupported discovery bezpečně odmítne a policy zaznamená Codex fallback.
+provider packages. Adapter ověřuje požadovaný config/permissions a macOS OS boundary;
+nekompatibilní config nebo discovery bezpečně odmítne a policy zaznamená Codex fallback.
 Migraci nullable `tasks.chief` a `runs.routing` aplikuje `npm run db:migrate`.
