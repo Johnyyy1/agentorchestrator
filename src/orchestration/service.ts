@@ -17,6 +17,7 @@ import type { ReviewerId } from "../review/policy.js";
 import { reviewerAvailability, runReview } from "../review/adapter.js";
 import type { ReviewerAvailability } from "../review/adapter.js";
 import { reviewSchema } from "../review/schema.js";
+import { ReviewFailure, type ReviewDiagnostics } from "../review/diagnostics.js";
 import { buildRepairContext } from "./context.js";
 import type { RepairContext } from "./context.js";
 import { effectiveAttempts, orchestrationStateSchema, assertTransition } from "./state.js";
@@ -94,6 +95,10 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
       const decisions = previousEvents.map(event => repairDecisionSchema.parse((event.data as { decision: unknown }).decision));
       const answers = await db.select().from(escalations).where(and(eq(escalations.taskId, taskId), eq(escalations.status, "resolved"))).orderBy(asc(escalations.resolvedAt));
       const [reviewRow] = latest ? await db.select().from(reviews).where(eq(reviews.runId, latest.id)) : [];
+      if (reviewRow?.status === "failed" && reviewRow.error?.startsWith("Reviewer infrastructure failure:")) {
+        await escalate("infrastructure", "Repair independent reviewer infrastructure and inspect the verified retained worktree. Do not reauthor this unchanged diff.", reviewRow.error);
+        return;
+      }
       const verdict = reviewRow?.result ? reviewSchema.parse(reviewRow.result) : null;
       const context = () => buildRepairContext(spec, row.chief?.workerBrief, attempt, limit, result, decisions, verdict,
         answers.map(item => ({ question: item.question, answer: item.answer ?? "" })));
@@ -205,16 +210,27 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
         if (!review) throw new Error("Review insert failed.");
         console.info("Independent review:", JSON.stringify({ taskId, attempt, reviewer, author: result!.route.worker }));
         let reviewed;
-        try { reviewed = reviewSchema.parse(await (options.review ?? runReview)(reviewer, input, controller.signal)); }
-        catch {
-          await db.update(reviews).set({ status: "failed", error: "Review invocation failed or returned invalid structured output.", finishedAt: new Date() }).where(eq(reviews.id, review.id));
-          await escalate("review", "Independent review failed. Inspect provider configuration and the retained attempt.", "No second review invocation or automatic worker execution."); return;
+        let diagnostics: ReviewDiagnostics | undefined;
+        try {
+          reviewed = reviewSchema.parse(await (options.review
+            ? options.review(reviewer, input, controller.signal)
+            : runReview(reviewer, input, controller.signal, { onDiagnostics: value => { diagnostics = value; } })));
+        } catch (error) {
+          const failureKind = error instanceof ReviewFailure ? error.diagnostics.failureKind ?? "infrastructure"
+            : error instanceof z.ZodError ? "result" : "infrastructure";
+          diagnostics ??= error instanceof ReviewFailure ? error.diagnostics : undefined;
+          const message = error instanceof ReviewFailure ? error.message : `Reviewer ${failureKind} failure: ${failureKind === "result" ? "structured schema validation failed" : "invocation unavailable"}.`;
+          await db.transaction(async tx => {
+            await tx.update(reviews).set({ status: "failed", error: message, finishedAt: new Date() }).where(eq(reviews.id, review.id));
+            await tx.insert(orchestrationEvents).values({ taskId, runId: latest.id, kind: "review_failed", data: { reviewer, failureKind, ...(diagnostics ? { diagnostics } : {}) } });
+          });
+          await escalate(failureKind === "infrastructure" ? "infrastructure" : "review", "Independent review failed. Inspect safe diagnostics and the retained verified attempt.", message); return;
         }
         controller.signal.throwIfAborted();
         await db.transaction(async tx => {
           await tx.update(reviews).set({ status: "completed", result: reviewed, finishedAt: new Date() }).where(eq(reviews.id, review.id));
           await tx.update(tasks).set({ orchestration: { ...state, phase: "reviewed" }, updatedAt: new Date() }).where(eq(tasks.id, taskId));
-          await tx.insert(orchestrationEvents).values({ taskId, runId: latest.id, kind: "review_finished", data: { reviewer, decision: reviewed.decision, severity: reviewed.severity } });
+          await tx.insert(orchestrationEvents).values({ taskId, runId: latest.id, kind: "review_finished", data: { reviewer, decision: reviewed.decision, severity: reviewed.severity, ...(diagnostics ? { diagnostics } : {}) } });
         });
         continue;
       }

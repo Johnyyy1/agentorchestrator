@@ -182,3 +182,6 @@ se zachovaným worktree a bez automatického coding repair/cloud fallbacku.
 [Reálné ověření OpenCode tool reliability](docs/opencode-tool-reliability-report.md):
 read/glob/write a skutečný repository worker/verifier prošly; jediný nový E2E
 zůstal waiting_human kvůli neúspěšné Antigravity review invocation, bez verdictu.
+
+Přímé ověření nezávislého Antigravity reviewera a safe diagnostics:
+[report spolehlivosti reviewera](docs/antigravity-reviewer-report.md).

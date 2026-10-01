@@ -249,6 +249,20 @@ read-only mimo disposable runtime; další executable jsou zakázané. Nemá
 přímý přístup do task/source worktree. Cloud network slouží inference.
 Antigravity plan/sandbox/JSON schema a Codex read-only/ignore config jsou
 code-owned. Původní obecný Antigravity execution wrapper se nemění.
+AGY reviewer používá consumer OAuth kopii z jediné Keychain položky do
+`.gemini/antigravity-cli/antigravity-oauth-token`, nikoli starý standalone auth
+soubor; hostovský auth bridge je mimo provider sandbox. Kopie je read-only,
+globální config/MCP se nepřebírají. Pro CLI backend je povolený loopback inbound
+filtr; omezení wildcard bindu je uvedené v setupu.
+
+AGY native wire schema má root type object a explicitní fields; rozhodovací
+podmínky vynucuje následně původní strict Zod schema. Parser čte pouze veřejné
+structured_output/response, odmítá non-success envelope, neukládá reasoning
+ani surový stdout. Safe diagnostics jsou v orchestration_events review_failed /
+review_finished; metadata mají bounded/redacted stderr, exit/signal/timeout,
+model/tier, public envelope format, JSON/schema kategorii a duration.
+Infrastructure review failure eskaluje bez coding repair, i po human answer
+pro tentýž pokus. Další opravy po platném request_changes se nemění.
 
 Request_changes jde do Chief. High/critical návrh opravy zastaví člověk;
 po jeho odpovědi Chief rozhoduje znovu a TypeScript vynutí strong-coding.

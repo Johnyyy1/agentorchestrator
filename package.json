@@ -29,6 +29,7 @@
     "executor:integration": "tsx src/test-worktree.ts",
     "repair:unit": "tsx --test src/chief/repair.test.ts",
     "reviewer:test": "tsx --test src/review/review.test.ts src/review/review-sandbox.test.ts",
+    "reviewer:direct": "tsx src/test-reviewer-direct.ts",
     "reviewer:pure": "tsx --test src/review/review.test.ts",
     "reviewer:os": "tsx --test src/review/review-sandbox.test.ts",
     "sandbox:test": "npm run opencode:os && npm run reviewer:os && npm run verifier:unit",

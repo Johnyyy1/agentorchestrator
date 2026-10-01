@@ -140,8 +140,24 @@ npm run escalation:answer -- <escalation-UUID> "Upřesnění rozhodnutí."
 
 - max_attempts: cap se odpovědí nemění. Inspectuj práci, pak task:abandon nebo nový task.
 - Reviewer unavailable: coding po Codexu vyžaduje Antigravity, nikoli další Codex.
-- Review failed: čti reviews.error, CLI přihlášení, podporované flags a macOS sandbox.
-  Snapshot-only reviewer má izolované auth/config; nestandardní auth storage může selhat.
+- Review failed: čti `reviews.error` a `orchestration_events` s kind `review_failed`.
+  `data.diagnostics` obsahuje executable/exit/timeout/signal/model/tier, format,
+  bounded redacted public stderr, JSON/schema category, modelOutputReceived,
+  terminalStatus a durationMs. Raw stdout, tokeny ani reasoning se neukládají.
+- `invalid --json-schema: schema root must specify "type": "object"`: starý
+  union-only export byl nekompatibilní s AGY 1.2.14. Reviewer používá explicitní
+  objektové fields a po výstupu původní strict Zod union.
+- `bind: operation not permitted`: CLI backend potřebuje listener na loopbacku;
+  reviewer profil jej povoluje při zachování zákazu repo čtení/zápisů a jiných procesů.
+- `Please sign in` / `authentication required`: ověř `agy models` v běžném
+  prostředí. Izolovaný adapter kopíruje pouze Keychain `gemini` / `antigravity`
+  do CLI auth souboru v privátním HOME. Starý jetski token není dostačující.
+  Consumer auth je jediná podporovaná metoda této integrace. Neměň HOME na
+  globální ani nerozšiřuj přístup do repozitáře.
+- Reviewer infrastructure failure: waiting_human/infrastructure, žádný coding
+  repair pro ověřený nezměněný diff. Human answer nereplayuje review stejného
+  pokusu. Invalid structured result má waiting_human/review. Pouze validní
+  request_changes může vstoupit do normálního bounded repair lifecycle.
 - Neúplný snapshot: rozsáhlé diffy, secrets/symlinky či velké nové soubory vyžadují lidskou kontrolu.
 - High/critical: odpověď musí upřesnit autorizované hranice; Chief znovu rozhodne.
 - Interrupted: ověř, že starý provider už neběží. Automatické replay je úmyslně zakázané.

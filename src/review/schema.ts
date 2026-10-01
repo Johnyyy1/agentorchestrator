@@ -13,3 +13,9 @@ export const reviewSchema = z.discriminatedUnion("decision", [
 ]);
 export type ReviewResult = z.infer<typeof reviewSchema>;
 export const reviewJsonSchema = z.toJSONSchema(reviewSchema, { target: "draft-07" });
+// AGY's schema enforcement consumes root properties, rather than the root oneOf emitted for a union.
+// The wire schema constrains common fields; reviewSchema still validates decision-specific requirements.
+export const antigravityReviewJsonSchema = z.toJSONSchema(z.strictObject({
+  decision: z.enum(["approve", "request_changes", "needs_human"]), ...common,
+  findings: z.array(findingSchema).max(20), humanQuestion: text(2000).optional(),
+}), { target: "draft-07" });

@@ -284,6 +284,12 @@ Review findings se nejprve předají lokálnímu Chief a nezvyšují počet poku
 OpenCode hodnotí Antigravity nebo při nedostupné readiness Codex. Codex hodnotí
 jen Antigravity. Review je read-only a při chybě nebo neúplném snapshotu se
 neopakuje. `waiting_human` je durable stop bez spotřeby další kvóty.
+Chyby reviewera se rozlišují na infrastructure (CLI/auth/runtime/timeout) a
+result (JSON/schema). Bezpečné detaily jsou v `review_failed` eventu; krátký
+popis v `reviews.error`. Reviewer infrastructure zachová ověřený worktree a
+ani po odpovědi člověka nepustí další coding repair stejného diffu.
+Pro ověření reviewera samostatně použij opt-in `npm run reviewer:direct`
+(dvě skutečné cloud inference; není součástí běžných regresí).
 
 ```sh
 npm run escalations:list

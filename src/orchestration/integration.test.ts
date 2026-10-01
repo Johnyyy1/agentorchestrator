@@ -17,6 +17,7 @@ import type { OrchestrationOptions } from "./service.js";
 import { infrastructureFailure, verifierFailureMessage } from "../verification/infrastructure.js";
 import { getTaskDetail } from "../control-plane/queries.js";
 import { taskOutcome } from "../control-plane/outcome.js";
+import { initialDiagnostics, ReviewFailure } from "../review/diagnostics.js";
 import { executeTask } from "../workers/execute.js";
 import { createTaskWorktree, inspectTaskWorktree, removeTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree } from "../git/worktree.js";
@@ -193,6 +194,39 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
     await t.test("E: reviewer needs_human stops execution", async () => {
       const task = await create("review-human"); await orchestrateCodingTask(task.id, options(task.title)); const state = await load(task.id);
       assert.equal(state.task.status, "waiting_human"); assert.equal(state.escalations[0]?.reasonType, "review"); assert.equal(state.runs.length, 1);
+    });
+    await t.test("reviewer infrastructure persists safe diagnostics and never repairs after redelivery or human answer", async () => {
+      const task = await create("reviewer-infra");
+      let invoked = 0;
+      const diagnostics = initialDiagnostics("/fixture/agy", "antigravity");
+      Object.assign(diagnostics, { failureKind: "infrastructure", exitCode: 1, stderrPublic: "Error: Authentication required token=[REDACTED]", durationMs: 54 });
+      const opts = options(task.title, { repair: async () => { throw new Error("Reviewer infrastructure must not call repair Chief"); },
+        review: async () => { invoked++; throw new ReviewFailure(diagnostics, "CLI invocation failed"); } });
+      await orchestrateCodingTask(task.id, opts);
+      let saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.runs.length, 1);
+      assert.equal(saved.runs[0]?.status, "completed"); assert.ok(saved.runs[0]?.workspace);
+      assert.equal(saved.reviews[0]?.result, null); assert.equal(saved.reviews[0]?.status, "failed");
+      assert.match(saved.reviews[0]!.error!, /^Reviewer infrastructure failure:/);
+      assert.equal(saved.escalations[0]?.reasonType, "infrastructure");
+      const event = saved.events.find(e => e.kind === "review_failed"); assert.ok(event);
+      assert.deepEqual(event.data, { reviewer: "antigravity", failureKind: "infrastructure", diagnostics });
+      await orchestrateCodingTask(task.id, opts);
+      await answerEscalation(saved.escalations[0]!.id, "Inspect the reviewer, preserve the verified diff.");
+      await orchestrateCodingTask(task.id, opts); saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.escalations.at(-1)?.reasonType, "infrastructure");
+      assert.equal(saved.runs.length, 1); assert.equal(saved.reviews.length, 1); assert.equal(invoked, 1);
+      assert.equal(calls.get(task.id)?.length, 1); assert.equal(saved.events.some(e => e.kind === "repair_started"), false);
+    });
+    await t.test("malformed structured review is classified as result failure and stops before coding repair", async () => {
+      const task = await create("invalid-review-result");
+      await orchestrateCodingTask(task.id, options(task.title, { repair: async () => { throw new Error("Invalid review must stop"); } }));
+      const saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.escalations[0]?.reasonType, "review");
+      assert.equal(saved.runs.length, 1); assert.equal(saved.reviews[0]?.result, null);
+      assert.match(saved.reviews[0]!.error!, /^Reviewer result failure:/);
+      assert.equal((saved.events.find(e => e.kind === "review_failed")?.data as { failureKind: string }).failureKind, "result");
+      assert.equal(saved.events.some(e => e.kind === "repair_started"), false);
     });
     await t.test("F: exhaustion stops before Chief/reviewer/worker can spend again", async () => {
       const task = await create("exhaust", 2); await orchestrateCodingTask(task.id, options(task.title)); const state = await load(task.id);

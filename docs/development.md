@@ -43,7 +43,7 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | control-plane:db:test | Vlastní DB rows + cleanup, SQL/read-model integrace, žádný consumer |
 | control-plane:e2e | Playwright Chromium + izolovaný fixture dev server :3107, skutečné screenshoty |
 | typecheck | Kontrola TS včetně examples; bez DB/modelů |
-| test (`npm test`) | semantics:test + chief:unit + router:test + capability-router:test + opencode:unit + repair:unit + reviewer:test + control-plane:test; bez reálné DB/modelů |
+| test (`npm test`) | semantics:test + chief:unit + router:test + capability-router:test + opencode:pure + repair:unit + reviewer:pure + control-plane:test; bez reálné DB/modelů |
 | router:test | Routovací příklady; bez AI/DB |
 | semantics:test | Pure regrese konfliktního Chief/TaskSpec, routování a completion evidence; bez DB/inference |
 | chief:unit | node:test schémat/bridge a local HTTP fixtures; bez inference |
@@ -68,8 +68,9 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | opencode:test | Reálný lokální coding smoke v disposable repo + DB/queue persistence, žádný cloud fallback |
 | repair:unit | Strict repair schema/bridge, state/cap/redakce, fake Ollama; bez skutečné inference |
 | repair:smoke | Jedna bounded skutečná Ollama repair inference, bez DB/cloud workerů |
-| reviewer:test | Policy/schema/parser, macOS OS fixture a native fake CLI (vyžaduje cc); bez cloud inference |
-| orchestration:test | DB/Git/verifier, fake worker/reviewer/Chief; scénáře A–K a safety |
+| reviewer:test | Policy/schema/parser, failure diagnostics/redakce, macOS OS/auth/timeout fixture a native fake CLI (vyžaduje cc); bez cloud inference a přístupu k reálnému auth v OS fixtures |
+| reviewer:direct | Opt-in dvě skutečné Antigravity GOOD/BAD reviews; disposable Git fixture, hash/HEAD/status proof, bez DB/Chief/worker/verifier |
+| orchestration:test | DB/Git/verifier, fake worker/reviewer/Chief; scénáře A–K, reviewer infrastructure/result persistence a stop po redelivery/human answer |
 | escalation:test | Alias orchestration:test; navíc transactional answer/resume/abandon assertions |
 | escalations:list | Read-only DB výpis otevřených eskalací |
 | escalation:answer | Resolve/odpověď + atomický enqueue existujícího tasku |

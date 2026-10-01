@@ -258,11 +258,37 @@ Codex → Antigravity. Bez dostupného reviewera task přejde na waiting_human.
 Reviewer boundary nyní vyžaduje macOS sandbox-exec. CLI musí podporovat
 read-only/plan flags a startovat uvnitř sandboxu. Readiness zkouší jen --help,
 nikoli inferenci. Auth zůstává ze stávajícího přihlášení: privátní kopie Codex
-`auth.json` (z CODEX_HOME nebo standardní složky) / Antigravity standalone OAuth
-tokenu. Projektové/global config, MCP a další uživatelské soubory se nepřebírají.
-Jiná auth storage nebo změněné CLI musí dostat kompatibilní integraci; neúspěch
-vede na člověka, nikoli na uvolnění oprávnění. Reálná cloud review inference
-nebyla v regresích tohoto milníku spuštěna.
+`auth.json` (z CODEX_HOME nebo standardní složky). Antigravity CLI 1.2.14 na macOS
+používá consumer OAuth položku Keychain `service=gemini`, `account=antigravity`.
+Host adapter přečte pouze tuto položku (max. 5 s) a přenese jen `token`, `auth_method`
+a `id_token` do souboru `.gemini/antigravity-cli/antigravity-oauth-token` v privátním
+HOME. Pokud položka neexistuje, použije přesně tento soubor v běžném HOME.
+Starší `.gemini/jetski-standalone-oauth-token` není přihlášení současného CLI.
+Jiný auth method v této izolované integraci není podporovaný; chyba eskaluje.
+
+Kopie má režim 0600 a sandbox jí zakazuje zápis/odstranění. CLI nesmí spouštět
+`security` ani jiné executable, číst uživatelův HOME, projekt či Keychain.
+Config/MCP jsou prázdné a celý runtime se po běhu smaže. CLI backend vyžaduje
+loopback listener; profil pro Antigravity povoluje inbound s filtrem `localhost:*`.
+Repo přístup se tím nemění. macOS filtr připouští také wildcard bind; neslouží
+jako obecný zákaz vytvoření wildcard socketu. Skutečný CLI backend byl pozorovaný
+s bindem na `127.0.0.1:0`; jiné programy reviewer spouštět nesmí.
+
+Nejdřív ověř aktuální rozhraní a přihlášení bez inference:
+
+```sh
+command -v agy
+agy --version
+agy --help
+agy help models
+agy models
+```
+
+Přímý opt-in test `npm run reviewer:direct` provede dva malé cloud reviews
+GOOD/BAD, bez Chief, workeru, fronty a verifieru. BAD nesmí schválit odčítání
+při požadavku na sčítání. Test porovnává hash zdroje, HEAD a Git status a uklidí
+fixture. Není součástí `npm test`. Ověřené výsledky a aktuální envelope jsou
+v [reportu spolehlivosti reviewera](antigravity-reviewer-report.md).
 
 Limit `JONAS_OS_MAX_ATTEMPTS=3` znamená nanejvýš tři pokusy včetně prvního;
 TaskSpec může stanovit nižší limit. Chief ani resume cap nezvyšují.

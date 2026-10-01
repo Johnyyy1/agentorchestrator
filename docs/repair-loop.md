@@ -87,10 +87,31 @@ privátního runtime; zápisy jen do runtime. Repo/original, symlink escapes
 ani další executable nejsou povolené. Cloud síť je nutná pro inference.
 Antigravity má `--mode plan --sandbox --json-schema --disable-slash-commands`;
 Codex má read-only, ignoruje user config/rules. HOME/config/MCP jsou izolované.
-Kopíruje se pouze přihlášení Codex auth.json nebo Antigravity standalone OAuth
-token do soukromého runtime (0600), který se po běhu odstraní. Původní auth se
-neupravuje. Odlišné auth storage/CLI či platforma mohou vyžadovat novou integraci;
-bez funkční read-only cesty se úkol eskaluje, bez uvolnění sandboxu.
+Kopíruje se pouze Codex auth.json nebo consumer OAuth z jediné Antigravity
+Keychain položky `gemini` / `antigravity` (fallback je stejnojmenný CLI auth
+soubor). Kopie `.gemini/antigravity-cli/antigravity-oauth-token` je 0600,
+read-only v sandboxu a po běhu se runtime odstraní. Původní přihlášení se nemění.
+Antigravity backend má loopback inbound filtr `localhost:*`; macOS tento filtr
+nepoužívá jako zákaz wildcard bindu. Repo přístup ani process-exec allowlist se
+nerozšiřují. Podrobnosti a omezení consumer auth jsou v [setupu](setup.md).
+
+CLI dostává objektové wire schema s explicitními properties. Parser preferuje
+`structured_output`, jinak parsuje veřejné `response` (legacy `result` či přímý
+objekt jsou stále podporované). Markdown/poškozené JSON a non-success status
+se odmítají; celý výsledek vždy projde původním strict `reviewSchema`, včetně
+podmíněných findings/severity/humanQuestion. Chybějící validní výsledek nemůže
+vytvořit approval.
+
+`review_failed` event ukládá bezpečné bounded diagnostiky a `failureKind`:
+`infrastructure` pro CLI/start/auth/runtime/timeout chyby, `result` pro
+prázdný či malformed/schema-invalid výstup. `reviews.error` obsahuje stabilní
+krátkou klasifikaci. Infrastructure vede na waiting_human s reasonType
+infrastructure; ověřený worktree zůstává zachovaný a odpověď člověka ani
+redelivery nespustí repair Chief či nový coding worker pro tentýž failed review.
+Chybný výsledek vede na reasonType review. Platné request_changes zachovává
+stávající repair lifecycle; needs_human žádá člověka. `review_finished` ukládá
+stejná bezpečná metadata u dokončeného review. Nemění se DB schéma ani počet
+review invocations na pokus.
 
 Readiness používá bounded --help uvnitř stejného sandboxu, žádnou inferenci.
 Neověřuje platnost přihlášení. Fallback lze použít před inference, nikoli po
