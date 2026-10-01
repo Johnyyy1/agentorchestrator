@@ -1,3 +1,4 @@
+import { normalizeTaskSemantics } from "./semantics.js";
 import { z } from "zod";
 import type { tasks } from "../db/schema.js";
 import type { TaskSpec } from "../workers/types.js";
@@ -5,7 +6,7 @@ import type { TaskSpec } from "../workers/types.js";
 export const taskSpecSchema = z.object({
   title: z.string().min(1),
   objective: z.string().min(1),
-  category: z.enum(["coding", "research", "planning", "review", "utility"]),
+  category: z.enum(["coding", "research", "planning", "review", "utility"]).describe("Repository file creation, edits, deletion, tests or refactoring require coding and repository context; research/planning without edits remain non-coding."),
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   risk: z.enum(["low", "medium", "high"]),
   context: z.array(z.string()),
@@ -18,7 +19,7 @@ export const taskSpecSchema = z.object({
 }) satisfies z.ZodType<TaskSpec>;
 
 export function taskRowToSpec(row: typeof tasks.$inferSelect): TaskSpec {
-  return taskSpecSchema.parse({
+  return normalizeTaskSemantics(taskSpecSchema.parse({
     title: row.title,
     objective: row.objective,
     category: row.category,
@@ -28,5 +29,5 @@ export function taskRowToSpec(row: typeof tasks.$inferSelect): TaskSpec {
     acceptanceCriteria: row.acceptanceCriteria,
     maxAttempts: row.maxAttempts,
     ...(row.repository === null ? {} : { repository: row.repository }),
-  });
+  }), row.chief?.capability);
 }

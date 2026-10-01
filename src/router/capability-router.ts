@@ -1,3 +1,4 @@
+import { normalizeTaskSemantics } from "../tasks/semantics.js";
 import type { Capability } from "../chief/capabilities.js";
 import { routeTask } from "./router.js";
 import type { TaskSpec, WorkerId, WorkerRoute } from "../workers/types.js";
@@ -22,6 +23,7 @@ export function localCodingMaxDifficulty(): number {
 }
 
 export function eligibleForLocalCoding(task: TaskSpec, capability?: Capability, maxDifficulty?: number): boolean {
+  task = normalizeTaskSemantics(task, capability);
   if (capability !== "local-coding" || task.category !== "coding" || !task.repository || task.risk === "high") return false;
   return task.difficulty <= (maxDifficulty ?? localCodingMaxDifficulty());
 }
@@ -29,6 +31,7 @@ export function eligibleForLocalCoding(task: TaskSpec, capability?: Capability, 
 // Pure policy. Readiness is supplied by the executor, never by the planner.
 export function routeCapability(task: TaskSpec, capability: Capability | undefined,
   availability: ProviderAvailability, maxDifficulty?: number): CapabilityRoute {
+  task = normalizeTaskSemantics(task, capability);
   const localLimit = maxDifficulty ?? (capability === "local-coding" && task.category === "coding" && task.repository && task.risk !== "high"
     ? localCodingMaxDifficulty() : 2);
   if (!Number.isInteger(localLimit) || localLimit < 1 || localLimit > 3) throw new Error("Invalid local difficulty policy.");
@@ -40,8 +43,7 @@ export function routeCapability(task: TaskSpec, capability: Capability | undefin
         if (availability.opencode.available) route = { worker: "opencode", reason: "Eligible local coding recommendation." };
         else fallbackReason = `OpenCode unavailable before execution: ${availability.opencode.reason ?? "readiness failed"}`;
       } else if (capability !== "strong-coding") {
-        fallbackReason = !task.repository ? "Repository context missing; preserve Codex read-only execution." :
-          task.risk === "high" || task.difficulty > localLimit ? "Coding risk/difficulty requires Codex." :
+        fallbackReason = task.risk === "high" || task.difficulty > localLimit ? "Coding risk/difficulty requires Codex." :
           "Coding category overrides incompatible capability.";
       }
     } else if (capability === "strong-general") {
@@ -51,7 +53,7 @@ export function routeCapability(task: TaskSpec, capability: Capability | undefin
     } else {
       fallbackReason = capability === "independent-review" ? "Independent review is deferred; use existing category route." :
         capability === "local-utility" ? "No local utility execution adapter; use existing category route." :
-        "Non-coding category overrides coding capability.";
+        "Use existing category route.";
     }
   }
   if (!availability[route.worker].available) throw new Error(`Selected worker ${route.worker} unavailable: ${availability[route.worker].reason ?? "unavailable"}`);

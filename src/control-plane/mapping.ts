@@ -91,7 +91,7 @@ export function formatActivity(kind: string, data: unknown): { title: string; de
     human_abandoned: 'Human abandoned task', completed: 'Task completed', invalid_state: 'Task stopped · invalid state',
   };
   return { title: names[kind] ?? safeText(kind.replaceAll('_', ' ').replaceAll('.', ' '), 150),
-    detail: safeText(decision.summary ?? d.reason ?? d.reasonType ?? (kind === 'attempt_finished' ? d.verified === true ? 'Verification recorded as successful' : 'Attempt requires attention' : ''), 1000) };
+    detail: safeText(decision.summary ?? d.reason ?? d.reasonType ?? d.error ?? (kind === 'attempt_finished' ? d.verified === true ? 'Verification recorded as successful' : 'Attempt requires attention' : ''), 1000) };
 }
 export function mapActivity(row: typeof orchestrationEvents.$inferSelect, title: string, worker?: string | null): ActivityEventDto {
   return { id: row.id, taskId: row.taskId, runId: row.runId, taskTitle: safeText(title, 300), kind: row.kind,

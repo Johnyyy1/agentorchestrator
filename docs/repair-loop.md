@@ -5,7 +5,9 @@ worker → deterministický verifier → nezávislé review → completed. Selh�
 workeru/verifieru nebo `request_changes` předává kontext lokálnímu Chief.
 Ten navrhuje `repair`, `ask_human` nebo `give_up`; TypeScript návrh validuje
 přísným Zod discriminated union a vynucuje všechny limity a oprávnění.
-Non-coding a coding bez repository zachovávají původní execution chování.
+Non-coding bez mutation požadavku zachovává původní execution chování. Coding
+bez repository se bezpečně odmítá; konfliktní coding capability se normalizuje
+ještě před volbou pipeline. [Completion invariant](architecture.md#invariant-dokončení-repository-coding).
 Samotné `executeTask()` provede jeden pokus, nikoli celý lifecycle.
 
 ## Stavy a pokusy

@@ -1,3 +1,4 @@
+import { normalizeTaskSemantics } from "../tasks/semantics.js";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { taskSpecSchema } from "../tasks/task-spec.js";
@@ -72,6 +73,10 @@ export function validateDecision(value: unknown): ChiefDecision {
   // JSON Schema cannot express whitespace-only strings; enforce this again in code.
   if (JSON.stringify(parsed.data).length > 30000 || containsBlank(parsed.data)) {
     throw new ChiefError("invalid_decision", "Chief output contains blank fields or exceeds the size limit; nothing was submitted.");
+  }
+  if (parsed.data.action === "create_task") {
+    try { return { ...parsed.data, task: normalizeTaskSemantics(parsed.data.task, parsed.data.capability) }; }
+    catch { throw new ChiefError("invalid_decision", "Coding tasks require supplied repository context; nothing was submitted."); }
   }
   return parsed.data;
 }

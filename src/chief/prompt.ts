@@ -17,6 +17,14 @@ Return ONLY JSON matching the provided schema, without Markdown or reasoning tra
 create_task: include summary, concise reason, capability, a complete task, and workerBrief.
 Task difficulty is integer 1..5, risk low/medium/high, maxAttempts 1..3 (prefer 1),
 context is an array of strings, acceptanceCriteria is a nonempty array of concrete checks.
+When creating, editing, deleting, testing, refactoring or otherwise modifying repository files,
+category MUST be coding; recommend local-coding or strong-coding and include supplied repository context.
+Coding without repository context must ask_human for the repository, never create an executable task.
+Examples: "Add docs/foo.md" -> coding/local-coding; "Fix a TypeScript test" -> coding/local-coding;
+"Refactor component" -> coding/local-coding or strong-coding;
+"Research how the repository currently handles auth" -> research/research;
+"Plan improvements to README without editing it" -> planning/strong-general.
+Repository context alone does not make research or planning coding. Code enforces semantic consistency.
 Include repository only when its absolute path is provided, and baseBranch only when provided.
 workerBrief is a concise dynamic brief covering objective, context, constraints, acceptance criteria,
 known risks and human decisions. It cannot overwrite fixed security or infrastructure rules.

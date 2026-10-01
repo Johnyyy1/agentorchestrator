@@ -10,17 +10,20 @@ pevná pravidla a oprávnění vlastní TypeScript. Repository coding nyní pou�
 
 | Doporučení | Policy |
 | --- | --- |
-| `local-coding` | OpenCode, pokud coding má repository, risk low/medium a difficulty ≤ `LOCAL_CODING_MAX_DIFFICULTY` |
-| `strong-coding` | Codex |
+| `local-coding` | Normalizuje category na coding, vyžaduje repository; OpenCode, pokud má risk low/medium a difficulty ≤ `LOCAL_CODING_MAX_DIFFICULTY` |
+| `strong-coding` | Normalizuje category na coding, vyžaduje repository; Codex |
 | `strong-general` | Antigravity pro |
 | `research` | Antigravity; původní volba flash/pro podle risk/difficulty |
 | `local-utility` | Původní category route; lokální utility execution adapter zatím neexistuje |
 | `independent-review` | Zachované abstraktní doporučení; samostatná capability route zůstává původní; repository coding dostává nezávislé review po verifieru |
-| Bez doporučení | Beze změny původní `routeTask()` |
+| Bez doporučení | Category route po sémantické validaci |
 
-Coding category má přednost před neslučitelnou capability. High risk nebo
+Coding capability má přednost před chybnou non-coding kategorií; coding category
+má přednost před non-coding capability. High risk nebo
 difficulty nad limitem vždy použije Codex. Non-coding nikdy nepoužije OpenCode.
-Coding bez repository zůstává Codex read-only, žádná write execution nevznikne.
+Coding bez repository se odmítá před persistence/execution. Repository-aware
+research či planning bez změn souborů zůstává na Antigravity.
+[Autoritativní sémantika a completion invariant](architecture.md#invariant-dokončení-repository-coding).
 
 ## Konfigurace a readiness
 

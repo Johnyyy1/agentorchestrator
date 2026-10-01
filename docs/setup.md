@@ -278,3 +278,13 @@ První cestu přidej přes **+ Add repository** v Overview/Projects nebo nastav
 příkazem `pwd -P` spuštěným v kořeni cílového checkoutu. Restartuj web po změně
 `.env`. Server registraci zajistí idempotentně při čtení; neplatné cesty
 nepřidává. [Validace a použití](control-plane.md#první-repozitář).
+
+### Sémantika repository úkolů
+
+Coding a capability `local-coding`/`strong-coding` vyžadují repository kontext.
+Při aktualizaci není potřeba migrace ani nová proměnná prostředí; hodnoty a limity
+`LOCAL_CODING_*` a `OPENCODE_BIN` se nemění. Staré aktivní konfliktní rows worker
+normalizuje před execution, coding bez repository odmítá. General smoke příklad
+`examples/tasks/read-only.json` je nyní utility přes Antigravity. Nový worktree
+stále vyžaduje explicitní provisioning dependencies, automatická instalace není
+součástí executoru. [Policy a routing tabulka](opencode.md#směrování).

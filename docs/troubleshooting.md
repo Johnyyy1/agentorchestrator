@@ -189,3 +189,15 @@ Worktree nikdy automaticky nemaž; [podrobné limity a recovery](repair-loop.md)
   pro vybraný successful run; UI ukazuje dostupná metadata bez nové inference.
   Truncated report/list má viditelné upozornění. Chybějící checks/review nejsou
   automaticky úspěšné a nikdy se nenahrazují verdict z jiného pokusu.
+
+## Execution incomplete: repository mutation was not verified
+
+Jde o selhání orchestration invariantu, nikoli úspěšné dokončení. Task zůstává
+`waiting_human` (durable coding) nebo `failed` (general shortcut); Control Plane
+ukazuje důvod v rozhodnutí či chybě runu. Zkontroluj poslední `runs` záznam,
+workerStarted/report, worktree metadata a Git inspekci, verifier checks a completed
+independent APPROVE review se stejným runId. Starší schválený pokus nestačí.
+Důkazy ručně nedoplňuj jako náhradu za execution. Historické completed rows bez
+metadata nejsou touto aktualizací zpětně certifikované. Před resume prohlédni
+uchovanou práci a ověř ukončení provider procesů; automatický replay se neprovádí.
+Coding bez repository oprav novým explicitním zadáním s repository kontextem.

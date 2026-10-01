@@ -31,11 +31,10 @@ test("research and strong-general route to Antigravity", () => {
   assert.equal(routeCapability({ ...task, category: "research" }, "research", available).route.worker, "antigravity");
   assert.equal(routeCapability({ ...task, category: "planning" }, "strong-general", available).route.tier, "pro");
 });
-test("non-coding recommendation and missing repository cannot select OpenCode", () => {
+test("coding capability normalizes conflicting category and rejects missing repository", () => {
   const research = routeCapability({ ...task, category: "research" }, "local-coding", available);
-  assert.equal(research.route.worker, "antigravity");
-  assert.match(research.metadata.fallbackReason!, /Non-coding/);
-  assert.equal(routeCapability({ ...task, repository: undefined }, "local-coding", available).route.worker, "codex");
+  assert.equal(research.route.worker, "opencode");
+  assert.throws(() => routeCapability({ ...task, repository: undefined }, "local-coding", available), /require repository/);
   assert.equal(eligibleForLocalCoding(task, "strong-coding"), false);
 });
 test("local unavailability safely falls back with reason and actual worker", () => {

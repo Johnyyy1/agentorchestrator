@@ -51,8 +51,8 @@ npx tsx examples/create-task.ts examples/tasks/read-only.json
 npx tsx examples/inspect-task.ts <ID-vypsané-při-vytvoření>
 ```
 
-První příklad volá skutečný Codex v režimu `read-only` a může čerpat kvótu jeho
-účtu. Stav `queued` znamená čekání na worker; kontrolu zopakuj až do
+První příklad je `utility` bez úprav souborů a volá skutečný Antigravity flash;
+může čerpat kvótu jeho účtu. Stav `queued` znamená čekání na worker; kontrolu zopakuj až do
 `completed` nebo `failed`. Výsledek je v `runs[].result.workerResult`.
 `acceptanceCriteria` jsou instrukce pro model, text odpovědi se automaticky
 neporovnává s očekávanou hodnotou.
@@ -93,7 +93,8 @@ Bez DB/inference lze UI prohlédnout přes `npm run control-plane:fixtures`
 
 - Chief plánuje a rozhoduje o opravách; až explicitní odeslání vytvoří nový úkol. Capability a
   `workerBrief` se ukládají jako doporučení, execution router vynucuje vlastní pravidla.
-- Coding bez `repository` používá `read-only`; coding s `repository` používá
+- Coding vyžaduje `repository`; chybějící kontext se odmítá před execution.
+  Coding capability normalizuje neslučitelnou kategorii na `coding`, která používá
   izolovaný worktree přes Codex nebo způsobilý lokální OpenCode. Jonas OS sám necommitne, nemerguje,
   nepushuje a nenasazuje změny.
 - Závislosti cílového projektu se do nového worktree automaticky neinstalují.

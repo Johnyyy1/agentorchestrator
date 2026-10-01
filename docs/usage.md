@@ -3,10 +3,10 @@
 ## Životní cyklus
 
 1. Připrav `TaskSpec` nebo získej návrh přes Chief.
-2. `createTask()` uloží task do PostgreSQL a do fronty pošle jen UUID.
+2. Sémantická kontrola sjednotí category/capability a `createTask()` uloží task do PostgreSQL a do fronty pošle jen UUID.
 3. Worker načte task, určí providera a založí záznam `runs`.
 4. Provider vykoná úkol; repository coding vytvoří worktree a ověří ho.
-5. Task/run skončí `completed` nebo `failed`, výsledek zůstane v DB.
+5. Repository coding dokončí task až po verifieru a nezávislém approve; při neúplných důkazech eskaluje do `waiting_human`. Výsledek zůstane v DB.
 
 Spusť `npm run worker`. Úkol lze zařadit i bez consumeru, zůstane `queued`.
 Lokální UI spustíš `npm run control-plane:dev` na 127.0.0.1:3000.
@@ -62,7 +62,7 @@ relativní importy a jsou zahrnuté v TypeScript kontrole.
 | `context` | Ano | Pole stringů, může být prázdné |
 | `acceptanceCriteria` | Ano | Pole stringů, přímé API dovoluje prázdné |
 | `maxAttempts` | Ano | Integer >=1; repository pokusy omezuje také globální cap 1–3 |
-| `repository` | Ne | Objekt `path` + volitelné `baseBranch` |
+| `repository` | Pro coding ano | Objekt `path` + volitelné `baseBranch`; coding bez něj se odmítá |
 
 Acceptance criteria se přidávají do promptu, nejsou automaticky vyhodnoceným
 testem. Prázdná kritéria nahradí obecná instrukce dokončit cíl správně.
@@ -84,14 +84,22 @@ Chief recommendation nebo třetí argument `createTask(spec, queueName,
 
 | Capability | Výsledná politika |
 | --- | --- |
-| local-coding | OpenCode jen pro coding s repository, risk !=high, difficulty <= LOCAL_CODING_MAX_DIFFICULTY a úspěšnou readiness; jinak Codex |
-| strong-coding | Coding zůstává na Codexu |
+| local-coding | Normalizuje kategorii na coding, vyžaduje repository; OpenCode pro risk !=high, difficulty <= LOCAL_CODING_MAX_DIFFICULTY a úspěšnou readiness; jinak Codex |
+| strong-coding | Normalizuje kategorii na coding, vyžaduje repository; Codex |
 | strong-general | Non-coding na Antigravity pro |
 | research | Non-coding na Antigravity s tierem podle původní náročnosti |
 | local-utility, independent-review | Samostatná capability route zachovává category fallback; coding má následné nezávislé review |
-| Capability neslučitelná s kategorií | Kategorie má přednost |
+| Non-coding capability u coding tasku | Coding pipeline má přednost; žádný general execution |
 
-Přímý JSON příklad doporučení nepředává a dál používá původní route.
+Sémantická policy je centrální `normalizeTaskSemantics()`: používá category,
+capability, repository, objective a acceptanceCriteria.
+`utility + local-coding + repository` se před uložením změní na `coding`; router pak vybere způsobilý
+OpenCode. Coding bez repository se odmítne ještě před DB insertem. Samotný
+repository kontext z research/planning/review/utility coding nedělá.
+Úzká doplňková kontrola rozpoznává přímé anglické instrukce k úpravám souborů
+v objective či kritériích (např. `Add docs/foo.md`, `Modify README.md`, `Fix a TypeScript test`, `Refactor component`); není obecným jazykovým klasifikátorem.
+`Create a plan for improving README` zůstává planning; `Edit README according to this plan` jde do coding pipeline. Preferuj vždy explicitní coding capability.
+Přímý JSON příklad je utility bez repository a používá Antigravity flash.
 Readiness fallback OpenCode → Codex probíhá pouze před vykonáváním. Po chybě
 lokálního workeru či verifikace může Chief navrhnout nový repair pokus ve
 stejném worktree, včetně strong-coding přes Codex. Doporučení neuděluje sandbox výjimky.
@@ -118,8 +126,8 @@ clean/smudge/process filtry (např. konfigurací LFS) manager odmítá.
 Úkol dostane branch `jonas-os/task-<UUID>` a worktree
 `~/.jonas-os/worktrees/<UUID>`; root mění `JONAS_OS_WORKTREE_DIR`. Existující
 větev/cesta se nepřepisuje. Worktree se vytvoří před readiness/routováním
-a používá ho vybraný coding worker. Bez `repository` běží Codex read-only v cwd
-consumeru, obvykle kořeni Jonas OS.
+a používá ho vybraný coding worker. Coding bez `repository` se odmítá;
+non-coding úkol používá general execution.
 
 Nový worktree nemá ignorované soubory z originálního checkoutu, zejména
 `node_modules` a `.env`. Dependencies se automaticky neinstalují a worker
@@ -224,8 +232,10 @@ obsahuje workerResult, verification.checks (exit code, stdout/stderr,
 trvání, timeout/skips), git.statusShort, changedFiles, diffStat, dirty,
 truncated a případné error. `runs.routing` a `result.routing` obsahují
 requestedCapability, selectedWorker, fallbackReason, model a reason.
-Completion repository tasku vyžaduje úspěch coding workeru, všech
-objevených checks a nezávislé review approve. Run completed značí pouze úspěšný pokus. Výpisy jsou omezené; diff stat neobsahuje untracked obsah.
+Completion repository tasku v DB transakci vyžaduje poslední úspěšný coding pokus,
+workerStarted a neprázdný worker report, shodná uložená worktree metadata,
+Git inspekci se changedFiles, dostupný validní worktree, úspěšný verifier se
+všemi objevenými checks a nezávislé review approve pro právě tento run. Run completed značí pouze úspěšný pokus. Výpisy jsou omezené; diff stat neobsahuje untracked obsah.
 
 Worktree zůstává po úspěchu i failure. Inspectuj ho:
 

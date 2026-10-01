@@ -1,3 +1,4 @@
+import { normalizeTaskSemantics } from "../tasks/semantics.js";
 import { finalReportInstructions } from "./final-report.js";
 import { realpath } from "node:fs/promises";
 import { eligibleForLocalCoding, routeCapability } from "../router/capability-router.js";
@@ -116,6 +117,7 @@ export async function executeTask(
   task = taskSpecSchema.parse(task);
   const recommendation = options.recommendation === undefined ? undefined : recommendationSchema.parse(options.recommendation);
   const capability = recommendation?.capability;
+  task = normalizeTaskSemantics(task, capability);
   options.signal?.throwIfAborted();
   // Create once, before readiness/routing, and persist before either coding worker writes.
   if (options.workspace) {

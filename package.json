@@ -4,7 +4,8 @@
   "description": "Local task orchestrator with a PostgreSQL queue, Codex/Antigravity workers and an Ollama planner",
   "main": "index.js",
   "scripts": {
-    "test": "npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit && npm run repair:unit && npm run reviewer:test && npm run control-plane:test",
+    "test": "npm run semantics:test && npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit && npm run repair:unit && npm run reviewer:test && npm run control-plane:test",
+    "semantics:test": "tsx --test src/tasks/semantics.test.ts src/orchestration/completion.test.ts",
     "codex:test": "tsx src/test-codex.ts",
     "agy:test": "tsx src/test-antigravity.ts",
     "router:test": "tsx src/test-router.ts",

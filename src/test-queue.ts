@@ -43,7 +43,7 @@ function spec(title: string): TaskSpec {
   return {
     title,
     objective: "Verify durable queue execution using a fake executor.",
-    category: "coding",
+    category: "utility",
     difficulty: 1,
     risk: "low",
     context: ["Temporary queue test task. Never call an AI worker."],
@@ -134,7 +134,7 @@ try {
   assert.equal(completedRuns.length, 1);
   const run = completedRuns[0];
   assert.ok(run);
-  assert.equal(run.worker, "codex");
+  assert.equal(run.worker, "antigravity");
   assert.equal(run.attempt, 1);
   assert.equal(run.status, "completed");
   assert.deepEqual(run.result, { success: true, message: "QUEUE_TEST_OK" });

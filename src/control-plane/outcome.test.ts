@@ -11,10 +11,10 @@ test('completed outcome uses latest successful coding worker, matching review an
   assert.equal(result.run?.worker, 'codex'); assert.ok(result.summary?.includes('settlement currency'));
   assert.equal(result.run?.git?.changedFileCount, 3);
   assert.equal(result.run?.checks.find(c => c.name === 'lint')?.status, 'skipped');
-  assert.equal(result.review?.decision, 'approve');
+  assert.equal(result.review?.decision, 'approve'); assert.equal(result.reason, null);
   const newerFailed = { ...detail.runs[1]!, id: 'failed-newer', attempt: 3, status: 'failed', workerSucceeded: false, message: 'Failed attempt' };
   detail.runs.push(newerFailed); detail.runs.reverse();
-  assert.equal(taskOutcome(detail).run?.attempt, 2); // Independent of transport order.
+  assert.equal(taskOutcome(detail).run?.attempt, 2); assert.match(taskOutcome(detail).reason!, /Execution incomplete/); // Independent of transport order.
   detail.runs.find(r => r.attempt === 2)!.message = '';
   assert.equal(taskOutcome(detail).summary, null); // Do not substitute an older worker report.
   assert.equal(detail.task.status, 'completed'); // Presentation cannot affect completion.
@@ -25,6 +25,7 @@ test('legacy completion and missing evidence are explicit, plain text needs no M
   assert.equal(taskOutcome(detail).summary, detail.runs[1]!.message);
   detail.runs = []; detail.reviews = [];
   assert.equal(taskOutcome(detail).run, null); assert.equal(taskOutcome(detail).summary, null);
+  assert.match(taskOutcome(detail).reason!, /Execution incomplete/);
 });
 test('waiting and failed summaries show current question, partial work and failed verification/review context', () => {
   const store = createFixtureStore(), waiting = store.detail('10000000-0000-4000-8000-000000000004')!;
@@ -47,4 +48,15 @@ test('local worker prompt requests operator-facing report without exact parsing 
   assert.ok(prompt.includes(finalReportInstructions));
   for (const heading of ['Summary', 'What changed', 'Files changed', 'Notes / limitations']) assert.ok(prompt.includes(heading));
   assert.ok(prompt.includes('exact formatting is not required')); assert.ok(prompt.includes('Do not include hidden reasoning'));
+});
+
+test('historical utility/local-coding repository completion exposes missing evidence without fabricating data', () => {
+  const detail = createFixtureStore().detail(fixtureTaskId)!;
+  detail.task.category = 'utility'; detail.task.capability = 'local-coding';
+  detail.runs = [{ ...detail.runs[1]!, worker: 'antigravity', workspace: null, git: null, checks: [] }];
+  detail.reviews = [];
+  const outcome = taskOutcome(detail);
+  assert.match(outcome.reason!, /Execution incomplete: repository mutation was not verified/);
+  assert.equal(outcome.run, null); assert.equal(outcome.summary, null);
+  assert.equal(detail.task.status, 'completed', 'Read model warns without rewriting historical database state.');
 });

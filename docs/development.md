@@ -6,7 +6,7 @@
 | --- | --- |
 | apps/control-plane/ | Next App Router, UI primitives, server bridge, HTTP routes a Playwright smoke |
 | src/control-plane/ | DTO, read modely, redakce, health cache, validované mutace a fixtures |
-| src/tasks/ | Zod TaskSpec, DB rows, createTask |
+| src/tasks/ | Zod TaskSpec, centrální sémantika, DB rows, createTask |
 | src/router/ | Legacy + capability route, recommendation a readiness |
 | src/workers/ | CLI wrappers a jeden implementation/verifier pokus |
 | src/orchestration/ | Durable lifecycle, checkpointy, audit, cap a integration tests |
@@ -43,8 +43,9 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | control-plane:db:test | Vlastní DB rows + cleanup, SQL/read-model integrace, žádný consumer |
 | control-plane:e2e | Playwright Chromium + izolovaný fixture dev server :3107, skutečné screenshoty |
 | typecheck | Kontrola TS včetně examples; bez DB/modelů |
-| test (`npm test`) | chief:unit + router:test + capability-router:test + opencode:unit + repair:unit + reviewer:test + control-plane:test; bez reálné DB/modelů |
+| test (`npm test`) | semantics:test + chief:unit + router:test + capability-router:test + opencode:unit + repair:unit + reviewer:test + control-plane:test; bez reálné DB/modelů |
 | router:test | Routovací příklady; bez AI/DB |
+| semantics:test | Pure regrese konfliktního Chief/TaskSpec, routování a completion evidence; bez DB/inference |
 | chief:unit | node:test schémat/bridge a local HTTP fixtures; bez inference |
 | db:generate | Generuje migrace; config vyžaduje DATABASE_URL |
 | db:migrate | Aplikuje migrace do nakonfigurované DB |
@@ -54,7 +55,7 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | worker | Consumer hlavní queue; může spouštět skutečné providery |
 | codex:test | Skutečný Codex, může čerpat kvótu |
 | agy:test | Skutečný Antigravity, může čerpat kvótu |
-| executor:test | Skutečný coding executor, volá Codex read-only |
+| executor:test | Skutečný general executor, volá Antigravity flash bez úprav souborů |
 | chief:check | Ollama readiness bez inference/downloadu |
 | chief:test | Dvě lokální inference + izolovaná queue integration; žádný execution provider |
 | capability-router:test | Pure policy assertions, včetně fallbacků; bez DB/modelů |
@@ -144,3 +145,14 @@ Při změně registry spusť i `db:test`, `control-plane:db:test`, web typecheck
 lint, production build a browser smoke. Migration metadata musí zůstat spolu
 s SQL. Outcome tests pokrývají opravy, legacy/missing report, matching review,
 failed checks a současnou human question.
+
+Sémantické regrese zahrnují přesný `utility + local-coding + repository` Chief
+výstup, strong-coding/planning konflikt, research/planning bez mutation a coding
+bez repository. Completion pure testy odmítají chybějící verifier/workspace/report,
+neshodné attempt/review a neindependentního reviewera. `orchestration:test` navíc
+ověřuje normalizaci historické DB row do OpenCode pipeline, chybějící verifier,
+workspace či review → waiting_human, a zablokování general completion shortcutu.
+
+Control Plane outcome regrese pokrývá i historický utility/local-coding task
+s repository, který omylem dokončil general worker; ukáže explicitní varování
+bez fabricace worker reportu či přepisování historie.

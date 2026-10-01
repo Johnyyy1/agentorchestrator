@@ -1,3 +1,5 @@
+import { CompletionInvariantError } from "../orchestration/completion.js";
+import { assertTaskCompletion } from "../orchestration/persistence.js";
 import { orchestrateCodingTask, recoverCodingTasks } from "../orchestration/service.js";
 import type { OrchestrationOptions } from "../orchestration/service.js";
 import type { ExecutionResult } from "../workers/execute.js";
@@ -5,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Job } from "pg-boss";
 import { db } from "../db/index.js";
-import { runs, tasks } from "../db/schema.js";
+import { runs, tasks, orchestrationEvents } from "../db/schema.js";
 import { routeTask } from "../router/router.js";
 import { recommendationSchema } from "../router/recommendation.js";
 import { taskRowToSpec } from "../tasks/task-spec.js";
@@ -44,7 +46,19 @@ export async function processTaskJob(
     const id = taskId;
     job.signal.throwIfAborted();
     const [persisted] = await db.select().from(tasks).where(eq(tasks.id, id));
-    if (persisted?.category === "coding" && persisted.repository) {
+    let persistedSpec: TaskSpec | undefined;
+    if (persisted) {
+      try { persistedSpec = taskRowToSpec(persisted); }
+      catch (error) {
+        await db.transaction(async tx => {
+          await tx.update(tasks).set({ status: "failed", updatedAt: new Date() }).where(eq(tasks.id, id));
+          await tx.insert(orchestrationEvents).values({ taskId: id, kind: "invalid_state", data: { error: errorText(error) } });
+        });
+        throw error;
+      }
+    }
+    if (persistedSpec?.category === "coding") {
+      if (persisted!.category !== "coding") await db.update(tasks).set({ category: "coding", updatedAt: new Date() }).where(eq(tasks.id, id));
       await orchestrateCodingTask(id, { ...orchestration, cwd, signal: job.signal,
         executor: async (spec, dir, options) => await executor(spec, dir, options) as ExecutionResult });
       return;
@@ -60,6 +74,7 @@ export async function processTaskJob(
       }
       ownsTask = true;
       const spec = taskRowToSpec(row);
+      if (spec.category === "coding") throw new CompletionInvariantError("Repository coding requires the durable coding pipeline.");
       const recommendation = row.chief === null ? undefined : recommendationSchema.parse(row.chief);
       const route = routeTask(spec);
 
@@ -113,6 +128,9 @@ export async function processTaskJob(
     }
 
     await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(tasks).where(eq(tasks.id, id)).for("update");
+      if (!row) throw new Error("Task disappeared before completion.");
+      await assertTaskCompletion(tx, row, task.runId);
       await tx.update(runs).set({ status: "completed", result, finishedAt: new Date() }).where(eq(runs.id, task.runId));
       await tx.update(tasks).set({ status: "completed", updatedAt: new Date() }).where(eq(tasks.id, id));
     });

@@ -15,6 +15,7 @@ const tasks: TaskSpec[] = [
       "Typecheck passes",
     ],
     maxAttempts: 2,
+    repository: { path: "/fixture/repo" },
   },
 
   {

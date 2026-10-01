@@ -96,7 +96,7 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
   try {
     await mkdir(source); await execa("git", ["init", "-b", "main", source]);
     await writeFile(join(source, "value.txt"), "baseline");
-    await writeFile(join(source, "verify.cjs"), "require('node:assert/strict').equal(require('node:fs').readFileSync('value.txt','utf8'),'ok');\n");
+    await writeFile(join(source, "verify.cjs"), "const fs=require('node:fs'), assert=require('node:assert/strict'); if(fs.existsSync('docs/smoke.md')) { assert.equal(fs.readFileSync('value.txt','utf8'),'baseline'); assert.equal(fs.readFileSync('docs/smoke.md','utf8'),'Created by smoke test.\\n'); } else { assert.equal(fs.readFileSync('value.txt','utf8'),'ok'); }\n");
     await writeFile(join(source, "package.json"), JSON.stringify({ scripts: Object.fromEntries(["test", "typecheck", "lint", "build"].map(check => [check, "node verify.cjs"])) }));
     await git(["add", "."]); await git(["-c", "user.name=Fixture", "-c", "user.email=fixture@localhost", "commit", "-m", "Fixture baseline"]);
     const head = (await git(["rev-parse", "HEAD"])).stdout;
@@ -180,7 +180,7 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
       await db.update(tasks).set({ orchestration: { phase: "after_attempt", latestRunId: run.id } }).where(eq(tasks.id, task.id));
       const [legacy] = await db.insert(tasks).values({ ...spec("legacy-no-repository"), repository: null, queueName, status: "running" }).returning(); assert.ok(legacy); ids.push(legacy.id);
       await recoverCodingTasks(opts, queueName);
-      assert.equal((await load(legacy.id)).task.status, "running", "Repository recovery preserves non-repository execution behavior.");
+      assert.equal((await load(legacy.id)).task.status, "failed", "Legacy coding without repository fails safely.");
       assert.equal((await load(task.id)).task.status, "completed"); assert.equal(calls.get(task.id)?.length, 1);
       const orphan = await create("orphan"); const workspace = await createTaskWorktree({ path: source }, orphan.id); workspaces.set(orphan.id, workspace);
       const [orphanRun] = await db.insert(runs).values({ taskId: orphan.id, attempt: 1, worker: "codex", status: "running", workspace }).returning(); assert.ok(orphanRun);
@@ -195,6 +195,68 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
       await recoverCodingTasks(options(reviewing.title, { review: async () => { throw new Error("Interrupted review must not repeat"); } }), queueName);
       const interruptedReview = await load(reviewing.id); assert.equal(interruptedReview.task.status, "waiting_human");
       assert.equal(interruptedReview.reviews[0]?.status, "interrupted");
+    });
+    await t.test("semantic regression enters coding orchestration for new and legacy Chief rows", async () => {
+      const input = { ...spec("semantic-regression"), category: "utility" as const, objective: "Create docs/smoke.md",
+        acceptanceCriteria: ["docs/smoke.md exists", "No unrelated files changed"] };
+      const task = await createTask(input, queueName, { capability: "local-coding", workerBrief: "Inspect and create docs/smoke.md" });
+      ids.push(task.id);
+      assert.equal(task.category, "coding");
+      await db.update(tasks).set({ category: "utility" }).where(eq(tasks.id, task.id)); // pre-fix persisted row
+      let workerCalls = 0;
+      const opts = options(task.title, { executor: (task, cwd, execution) => executeTask(task, cwd, { ...execution,
+        availability: { opencode: { available: true, model: "ollama/fixture-qwen" }, codex: { available: true }, antigravity: { available: true } },
+        opencodeExecutor: async (_prompt, path, workerOptions) => {
+          workerCalls++;
+          workspaces.set(workerOptions.workspace.taskId, workerOptions.workspace);
+          await mkdir(join(path, "docs")); await writeFile(join(path, "docs/smoke.md"), "Created by smoke test.\n");
+          return { success: true, exitCode: 0, message: "Created docs/smoke.md", stderr: "", sessionId: "fixture",
+            model: "ollama/fixture-qwen", usage: null, durationMs: 1, timedOut: false, error: null };
+        }, codexExecutor: async () => { throw new Error("Semantic regression must use OpenCode"); },
+      }) });
+      await processTaskJob({ id: randomUUID(), name: queueName, data: { taskId: task.id }, retryCount: 0,
+        expireInSeconds: 3600, heartbeatSeconds: null, signal: new AbortController().signal },
+        (task, cwd, execution) => { assert.equal(task.category, "coding"); return opts.executor!(task, cwd, execution ?? {}); }, source, opts);
+      const saved = await load(task.id);
+      assert.equal(saved.task.category, "coding"); assert.equal(saved.task.status, "completed");
+      assert.equal(saved.runs[0]?.worker, "opencode"); assert.ok(saved.runs[0]?.workspace);
+      assert.equal(saved.reviews[0]?.reviewer, "antigravity"); assert.equal(workerCalls, 1);
+      const output = saved.runs[0]!.result as import("../workers/execute.js").ExecutionResult;
+      assert.deepEqual(output.git?.changedFiles, ["docs/smoke.md"]);
+      assert.equal(await readFile(join(saved.runs[0]!.workspace!.path, "docs/smoke.md"), "utf8"), "Created by smoke test.\n");
+    });
+    await t.test("successful claims missing verifier, workspace or final review never complete", async () => {
+      for (const missing of ["verification", "workspace", "review", "persisted-workspace"] as const) {
+        const task = await create(`missing-${missing}`, 1); const opts = options(task.title);
+        const [run] = await db.insert(runs).values({ taskId: task.id, worker: "opencode", status: "running" }).returning(); assert.ok(run);
+        await db.update(tasks).set({ status: "running", orchestration: { phase: "executing", latestRunId: run.id } }).where(eq(tasks.id, task.id));
+        const output = await opts.executor!(spec(task.title, 1), source, { taskId: task.id,
+          onWorkspaceCreated: async workspace => { await db.update(runs).set({ workspace }).where(eq(runs.id, run.id)); },
+          onRouteSelected: async (routing, route) => { await db.update(runs).set({ routing, worker: route.worker }).where(eq(runs.id, run.id)); } });
+        if (missing === "verification") delete output.verification;
+        if (missing === "workspace") delete output.workspace;
+        await db.update(runs).set({ status: "completed", result: output,
+          ...(missing === "persisted-workspace" ? { workspace: null } : {}) }).where(eq(runs.id, run.id));
+        if (missing === "persisted-workspace") await db.insert(reviews).values({ taskId: task.id, runId: run.id,
+          reviewer: "antigravity", providerFamily: "google", status: "completed", result: { ...approve, decision: "approve", severity: "none" } });
+        const reviewed = missing === "review" || missing === "persisted-workspace";
+        await db.update(tasks).set({ status: reviewed ? "reviewing" : "running",
+          orchestration: { phase: reviewed ? "reviewed" : "after_attempt", latestRunId: run.id } }).where(eq(tasks.id, task.id));
+        await orchestrateCodingTask(task.id, { ...opts, review: async () => { throw new Error("Must not review incomplete execution"); } });
+        const saved = await load(task.id); assert.equal(saved.task.status, "waiting_human");
+        assert.match(saved.escalations[0]!.summary, /Execution incomplete: repository mutation was not verified/);
+        assert.equal(saved.runs.length, 1); assert.equal(saved.reviews.length, missing === "persisted-workspace" ? 1 : 0);
+      }
+    });
+    await t.test("general executor cannot complete a repository coding task after a conflicting legacy update", async () => {
+      const [task] = await db.insert(tasks).values({ ...spec("legacy-shortcut"), category: "utility", objective: "Summarize status",
+        queueName, status: "queued" }).returning(); assert.ok(task); ids.push(task.id);
+      await assert.rejects(processTaskJob({ id: randomUUID(), name: queueName, data: { taskId: task.id }, retryCount: 0,
+        expireInSeconds: 3600, heartbeatSeconds: null, signal: new AbortController().signal }, async () => {
+          await db.update(tasks).set({ chief: { capability: "local-coding", workerBrief: "legacy conflict" } }).where(eq(tasks.id, task.id));
+          return { success: true, message: "General worker claimed success" };
+        }, source), /Execution incomplete/);
+      assert.equal((await load(task.id)).task.status, "failed");
     });
     await t.test("K: concurrent claim and pg-boss redelivery never double-execute a logical attempt", async () => {
       const task = await create("concurrent"); const opts = options(task.title);

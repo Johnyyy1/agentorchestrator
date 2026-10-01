@@ -1,7 +1,7 @@
 {
-  "title": "První úkol pro Codex",
+  "title": "První obecný úkol",
   "objective": "Odpověz přesně: JONAS_OS_OK. Neupravuj žádné soubory.",
-  "category": "coding",
+  "category": "utility",
   "difficulty": 1,
   "risk": "low",
   "context": ["Ověření průchodu frontou bez změn repozitáře."],

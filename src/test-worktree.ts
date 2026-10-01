@@ -226,15 +226,15 @@ try {
     const result = await runCodex("Fake CLI only", workspace.path, { mode: "workspace-write", workspace });
     assert.equal(result.success, true);
     assert.equal(result.message, "FAKE_CLI_OK");
-    const legacy = await executeTask({ ...spec("Legacy read-only fixture"), repository: undefined }, repositoryPath);
-    assert.equal(legacy.route.worker, "codex");
-    assert.equal(legacy.workspace, undefined);
-    assert.equal((legacy.workerResult as { success: boolean }).success, true);
+    await assert.rejects(executeTask({ ...spec("Legacy coding without repository"), repository: undefined }, repositoryPath), /require repository/);
+    const readOnly = await runCodex("Fake read-only CLI only", repositoryPath);
+    assert.equal(readOnly.success, true);
+    assert.equal(readOnly.message, "FAKE_CLI_OK");
   } finally {
     if (oldPath === undefined) delete process.env.PATH;
     else process.env.PATH = oldPath;
   }
-  console.log("CODEX PERMISSION FLAGS, OUTPUT PARSING AND LEGACY READ-ONLY EXECUTION: OK (fake CLI)");
+  console.log("CODEX PERMISSION FLAGS, OUTPUT PARSING, READ-ONLY ADAPTER AND MISSING REPOSITORY REJECTION: OK (fake CLI)");
 
   const verifierWorkspace = await createTaskWorktree({ path: repositoryPath }, randomUUID());
   workspaces.push(verifierWorkspace);

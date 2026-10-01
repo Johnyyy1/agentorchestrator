@@ -43,7 +43,7 @@ prázdnou Mastra instanci; není vstupním bodem workeru. Consumer startuje
 stav, nullable result/workspace/routing/error a časy začátku/konce. Drizzle migrace
 jsou v `drizzle/`; queue infrastrukturu spravuje `pg-boss` samostatně.
 
-`createTask()` nejdřív uloží pending row. Po inicializaci queue v jedné DB
+`createTask()` nejdřív validuje TaskSpec a normalizuje sémantiku, potom uloží pending row. Po inicializaci queue v jedné DB
 transakci provede `boss.send({ taskId })` přes Drizzle adapter a změnu na
 queued. Queueing failure ponechá pending task; retry celého volání může
 vytvořit duplicitní task.
@@ -84,7 +84,15 @@ To je výchozí router. Capability router může způsobilý local-coding task
 OpenCode po readiness. Jinak před execution zvolí Codex a uloží fallback
 reason. Strong-general u non-coding vybere pro, research zachová tier.
 Local-utility/independent-review mají zatím původní route s důvodem odkladu.
-Kategorie vynucuje kompatibilitu capability. Cloud availability nyní pouze
+Centrální `src/tasks/semantics.ts` se používá po Chief parsing/submission,
+před DB insertem, při čtení DB rows, category/capability routování a na vstupu
+executoru. `local-coding`/`strong-coding` vynucují coding s repository; chybějící
+repository se odmítá. Úzká kontrola explicitní anglické mutation instrukce v
+objective/kritériích vynutí coding i u non-coding capability. Repository sám
+neopravňuje zápis; research/planning bez mutation instrukcí zůstávají general.
+Fronta a recovery normalizují i staré konfliktní aktivní rows před volbou
+pipeline; staré coding rows bez repository bezpečně selžou. Coding pipeline
+má přednost před non-coding capability. Cloud availability nyní pouze
 vrací true; skutečné přihlášení/binárky ověří až execution, nejde o preflight.
 
 Recommendation se ukládá v tasks.chief, worker ji znovu validuje. Worktree
@@ -95,7 +103,8 @@ selhání autorizovat nový pokus s jiným workerem ve stejném worktree.
 
 Codex volá `exec --json --sandbox … --skip-git-repo-check`, ignoruje stdin
 a má timeout 90000 ms. JSONL parser vrací success podle exit code, poslední
-agent message, thread ID, usage a stderr. Bez repository je read-only.
+agent message, thread ID, usage a stderr. Přímý adapter `runCodex()` má také
+read-only režim; TaskSpec coding bez repository se do execution nepustí.
 Write mode vyžaduje validovaný managed worktree a shodný cwd.
 
 Worktree manager validuje absolutní Git root, lokální base branch (default
@@ -242,3 +251,22 @@ pochází z posledního úspěšného coding workeru, u legacy dat z completed r
 SQL omezuje payload a ponechává skutečný počet uložených changedFiles.
 Worker prompty žádají operátorský report také při opravách; parser jeho
 formát nevyžaduje. Žádná inference navíc ani změna completion policy.
+
+## Invariant dokončení repository coding
+
+Obě místa zapisující task `completed` (general queue a durable `saveState`)
+volají `assertTaskCompletion()` pod task row lockem v téže transakci. Guard
+znovu načte sémantiku a právě poslední attempt; starší úspěch nestačí.
+`assertCodingCompletion()` vyžaduje coding worker, skutečný start, úspěch a
+neprázdný report, uložená metadata worktree shodná s výsledkem a taskem,
+Git changedFiles metadata, úspěšný neprázdný verifier result a nezávislý
+completed review s APPROVE pro stejné taskId/runId. Worktree se ještě ověří
+proti Git a canonical repository cestě. Skipped checks zůstávají podle
+stávající verifier policy explicitně zaznamenané; guard je nevydává za provedené.
+Chybějící důkazy nemohou přepsat task na completed: durable cesta eskaluje
+`waiting_human`, general shortcut selže. Control Plane zobrazí skutečný stav
+a důvod `Execution incomplete: repository mutation was not verified.`
+Historické completed rows se automaticky nepřepisují ani znovu nevykonávají;
+jejich chybějící evidence zůstává viditelná a vyžaduje operátorský audit.
+Final Result navíc pro historický repository coding zobrazí explicitní invariant
+warning při chybějících důkazech nebo novějším neúspěšném pokusu; uložený stav nepřepisuje.

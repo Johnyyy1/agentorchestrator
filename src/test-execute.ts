@@ -2,12 +2,12 @@ import { executeTask } from "./workers/execute.js";
 
 const result = await executeTask(
   {
-    title: "Test coding worker routing",
+    title: "Test general worker routing",
 
     objective:
-      "Reply exactly with: EXECUTOR_CODEX_OK",
+      "Reply exactly with: EXECUTOR_GENERAL_OK",
 
-    category: "coding",
+    category: "utility",
 
     difficulty: 2,
 
@@ -19,7 +19,7 @@ const result = await executeTask(
     ],
 
     acceptanceCriteria: [
-      "Final response contains exactly EXECUTOR_CODEX_OK",
+      "Final response contains exactly EXECUTOR_GENERAL_OK",
     ],
 
     maxAttempts: 1,

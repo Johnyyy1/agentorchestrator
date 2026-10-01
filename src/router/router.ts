@@ -1,3 +1,4 @@
+import { normalizeTaskSemantics } from "../tasks/semantics.js";
 import type {
     TaskSpec,
     WorkerRoute,
@@ -6,6 +7,7 @@ import type {
   export function routeTask(
     task: TaskSpec,
   ): WorkerRoute {
+    task = normalizeTaskSemantics(task);
     // Repository/code modification belongs to Codex.
     if (task.category === "coding") {
       return {

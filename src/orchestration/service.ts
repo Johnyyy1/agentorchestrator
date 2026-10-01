@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, pool } from "../db/index.js";
 import { tasks, runs, reviews, escalations, orchestrationEvents } from "../db/schema.js";
@@ -19,6 +19,7 @@ import { reviewSchema } from "../review/schema.js";
 import { buildRepairContext } from "./context.js";
 import type { RepairContext } from "./context.js";
 import { effectiveAttempts, orchestrationStateSchema, assertTransition } from "./state.js";
+import { isVerifiedCodingExecution as isVerified, CompletionInvariantError } from "./completion.js";
 import { saveState } from "./persistence.js";
 import { openEscalation } from "../escalations/service.js";
 
@@ -30,10 +31,6 @@ export type OrchestrationOptions = {
   chiefModel?: string;
   cwd?: string; signal?: AbortSignal;
 };
-const isVerified = (result: ExecutionResult | undefined) => result?.success === true && result.verification?.success === true &&
-  result.verification.checks.every(check => check.success === true) &&
-  (result.workerResult as { success?: boolean } | null)?.success === true;
-
 // A session lock lasts across all transitions/provider calls; another process cannot execute this task.
 // A crashed owner releases the lock, but persisted in-flight phases remain ambiguous and escalate.
 export async function orchestrateCodingTask(taskId: string, options: OrchestrationOptions = {}): Promise<void> {
@@ -144,7 +141,8 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
         continue;
       }
       if (state.phase === "after_attempt") {
-        if (!latest) throw new Error("Attempt history is missing.");
+        if (!latest) throw new CompletionInvariantError("Attempt history is missing.");
+        if (result?.success === true && !isVerified(result)) throw new CompletionInvariantError("Successful execution claim lacks coding workspace, inspection or verifier evidence.");
         await saveState(taskId, isVerified(result) ? "reviewing" : "repairing", { ...state, phase: isVerified(result) ? "review" : "decide" }, "verification_decided", { verified: isVerified(result) });
         continue;
       }
@@ -210,7 +208,7 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
         continue;
       }
       if (state.phase === "reviewed") {
-        if (!isVerified(result) || !verdict || reviewRow?.status !== "completed") throw new Error("Review/verification evidence missing.");
+        if (!isVerified(result) || !verdict || reviewRow?.status !== "completed") throw new CompletionInvariantError("Review/verification evidence missing.");
         assertIndependent(result!.route.worker, reviewRow.reviewer as ReviewerId);
         if (verdict.decision === "approve") { await saveState(taskId, "completed", { ...state, phase: "done" }, "completed", { reviewId: reviewRow.id }); return; }
         if (verdict.decision === "needs_human") { await escalate("review", verdict.humanQuestion, verdict.summary); return; }
@@ -224,7 +222,7 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
     if (locked && !controller.signal.aborted) {
       const [row] = await db.select().from(tasks).where(eq(tasks.id, taskId));
       if (row && !["completed", "failed", "waiting_human"].includes(row.status)) {
-        await openEscalation(taskId, row.orchestration?.latestRunId, "infrastructure", "Inspect task state, provider processes and retained work before resuming.", "Orchestration stopped safely after an infrastructure failure.");
+        await openEscalation(taskId, row.orchestration?.latestRunId, "infrastructure", "Inspect task state, provider processes and retained work before resuming.", error instanceof CompletionInvariantError ? error.message : "Orchestration stopped safely after an infrastructure failure.");
         return;
       }
     }
@@ -238,7 +236,18 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
 }
 
 export async function recoverCodingTasks(options: OrchestrationOptions = {}, queueName = "jonas-os.tasks.execute") {
-  const active = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.category, "coding"), isNotNull(tasks.repository), eq(tasks.queueName, queueName),
+  const active = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.queueName, queueName),
     inArray(tasks.status, ["running", "repairing", "reviewing"])));
-  for (const task of active) await orchestrateCodingTask(task.id, options);
+  for (const task of active) {
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+    if (!row) continue;
+    try {
+      if (taskRowToSpec(row).category !== "coding") continue;
+    } catch {
+      await saveState(task.id, "failed", { phase: "done" }, "invalid_state", { error: "Coding tasks require repository context." });
+      continue;
+    }
+    if (row.category !== "coding") await db.update(tasks).set({ category: "coding", updatedAt: new Date() }).where(eq(tasks.id, task.id));
+    await orchestrateCodingTask(task.id, options);
+  }
 }

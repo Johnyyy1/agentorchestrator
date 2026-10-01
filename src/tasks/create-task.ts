@@ -5,6 +5,7 @@ import { tasks } from "../db/schema.js";
 import { boss, startQueue, TASK_QUEUE_NAME } from "../queue/boss.js";
 import type { TaskJob } from "../queue/boss.js";
 import type { TaskSpec } from "../workers/types.js";
+import { normalizeTaskSemantics } from "./semantics.js";
 import { taskSpecSchema } from "./task-spec.js";
 import { recommendationSchema } from "../router/recommendation.js";
 import type { Recommendation } from "../router/recommendation.js";
@@ -14,8 +15,9 @@ export async function createTask(
   queueName = TASK_QUEUE_NAME,
   recommendation?: Recommendation,
 ): Promise<typeof tasks.$inferSelect> {
-  const spec = taskSpecSchema.parse(task);
+  const parsed = taskSpecSchema.parse(task);
   const chief = recommendation === undefined ? null : recommendationSchema.parse(recommendation);
+  const spec = normalizeTaskSemantics(parsed, chief?.capability);
   const [created] = await db.insert(tasks).values({ ...spec, chief, queueName, status: "pending" }).returning();
   if (!created) throw new Error("Task insert did not return a row.");
 
