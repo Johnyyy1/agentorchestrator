@@ -1,8 +1,10 @@
 # Oprava sémantiky TaskSpec a falešného dokončení
 
-Stav k 1. 10. 2026: oprava a deterministické regrese ověřené. Reálný E2E
-zůstává **blokovaný před inferencí** nečistým zdrojovým checkoutem. Tento
-report není potvrzením úspěšného reálného coding smoke testu.
+Stav k 1. 10. 2026: oprava a deterministické regrese ověřené. Níže je zachycen
+první blokovaný preflight; po explicitním povolení dočasného stash následoval
+[jeden skutečný E2E task](jonas-os-real-e2e-report.md), který skončil bezpečně
+waiting_human po worker/verifier failure. Úspěšný completed lifecycle s review
+není potvrzený.
 
 ## Příčina
 
@@ -122,7 +124,7 @@ se nedokončil. U uloženého workspace test měl verifier PASS i review APPROVE
 přesto final transakční guard zabránil completed. General executor s dodatečně
 zjištěným konfliktem rovněž nemohl dokončit repository coding.
 
-## Reálný E2E a původní checkout
+## První preflight a původní checkout
 
 Preflight použil skutečný nezměněný `createTaskWorktree()` pro původní
 repozitář. Odmítl vytvoření worktree s chybou „Source repository is dirty.
@@ -148,3 +150,14 @@ vyžádán výslovný souhlas. Bez něj nelze splnit požadovaný reálný lifec
 neověřený. Neproběhly skutečné codex:test, agy:test, chief:test, opencode:test
 ani executor:test; production web build a browser E2E nejsou součástí tohoto
 ověření. Zdrojový checkout ani bezpečnostní pravidla se kvůli smoke neuvolňují.
+
+## Navazující skutečný E2E
+
+Po výslovném souhlasu uživatele byla pouze změna AGENTS.md dočasně stashnuta,
+main se fast-forwardnul na 3898426b a proběhl jeden reálný task. OpenCode/Qwen
+vytvořil pouze cílový soubor v izolovaném worktree. Worker neměl zachycený
+finální public report a verifier test selhal na dlouhé tsx IPC socket cestě;
+typecheck prošel, lint/build byly explicitně skipped. Review proto neproběhl
+a task zůstal waiting_human. AGENTS.md byl přesně obnoven a ověřen byte-for-byte
+i shodou diff patchů; vlastní stash byl odstraněn až po ověření.
+[Kompletní výsledky, skutečná inference volání a Control Plane](jonas-os-real-e2e-report.md).

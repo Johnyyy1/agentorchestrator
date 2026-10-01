@@ -201,3 +201,13 @@ Důkazy ručně nedoplňuj jako náhradu za execution. Historické completed row
 metadata nejsou touto aktualizací zpětně certifikované. Před resume prohlédni
 uchovanou práci a ověř ukončení provider procesů; automatický replay se neprovádí.
 Coding bez repository oprav novým explicitním zadáním s repository kontextem.
+
+## Verifier: tsx listen EINVAL na macOS
+
+Dlouhá cesta task worktree + `.jonas-os-verify-…` + tsx IPC socket může překročit
+kapacitu macOS Unix socket cesty. Ve skutečném smoke měla cesta 112 bajtů,
+macOS SDK má `sun_path[104]`; npm test skončil před spuštěním assertions, zatímco
+typecheck prošel. Skipped lint/build nejsou úspěšná verifikace. Nepřepisuj failure
+na PASS ani neuvolňuj sandbox. Uchovej worktree, run.verification a eskalaci;
+oprava runtime vyžaduje samostatnou změnu a ověření.
+[Skutečný smoke report](jonas-os-real-e2e-report.md).
