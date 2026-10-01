@@ -20,6 +20,7 @@ test("successful final coding attempt with verifier PASS and independent APPROVE
 });
 test("repository coding cannot complete with missing/failed verifier, worker, workspace or inspection evidence", () => {
   for (const patch of [{ verification: undefined }, { verification: { ...result.verification!, success: false } },
+    { verification: { ...result.verification!, failureKind: "infrastructure" as const } },
     { verification: { ...result.verification!, checks: [] } }, { workspace: undefined }, { git: undefined },
     { workerStarted: false }, { workerResult: { success: false } }, { route: { worker: "antigravity" as const, reason: "General" } }]) {
     assert.throws(() => assertCodingCompletion("task", task, { ...run, result: { ...result, ...patch } }, review), /Execution incomplete/);

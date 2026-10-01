@@ -1,11 +1,14 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { execa } from "execa";
+import { boundedProcess } from "../local/bounded-process.js";
 import { assertTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree } from "../git/worktree.js";
 import { createVerifierRuntime } from "./runtime.js";
-import { workspaceSandboxArgs } from "../workers/codex.js";
+import { verifierSandboxCommand, verifierEnvironment, runtimeProbe, checkLauncher } from "./launcher.js";
+import { loopbackGuard, loopbackGuardFilename } from "./loopback-guard.js";
+import { infrastructureFailure } from "./infrastructure.js";
+import type { VerifierInfrastructureFailure } from "./infrastructure.js";
 
 export type VerificationCheck = {
   name: string;
@@ -21,6 +24,8 @@ export type VerificationCheck = {
 
 export type VerificationResult = {
   success: boolean;
+  failureKind?: "verification" | "infrastructure" | null;
+  infrastructureFailure?: VerifierInfrastructureFailure;
   packageManager: "npm" | "pnpm" | "yarn" | null;
   checks: VerificationCheck[];
 };
@@ -43,7 +48,8 @@ export async function verifyWorktree(workspace: TaskWorktree, options: {
   timeoutMs?: number;
   signal?: AbortSignal;
 } = {}): Promise<VerificationResult> {
-  await assertTaskWorktree(workspace);
+  try { await assertTaskWorktree(workspace); }
+  catch { return infrastructureFailure("setup", "Verifier worktree validation failed; inspect retained workspace."); }
   const timeout = options.timeoutMs ?? 60_000;
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 60_000) {
     throw new Error("Verification timeout must be between 1 and 60000 milliseconds.");
@@ -56,25 +62,51 @@ export async function verifyWorktree(workspace: TaskWorktree, options: {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { success: true, packageManager: null, checks: checkNames.map(name => skipped(name, "No package.json; script discovery skipped.")) };
     }
-    return { success: false, packageManager: null, checks: [{ ...skipped("package.json", ""), skipped: false, success: false, stderr: String(error) }] };
+    return { success: false, failureKind: "verification", packageManager: null, checks: [{ ...skipped("package.json", ""), skipped: false, success: false, stderr: String(error) }] };
   }
 
   let packageManager: "npm" | "pnpm" | "yarn" = "npm";
   if (typeof manifest.packageManager === "string") {
     const declared = manifest.packageManager.split("@")[0];
     if (declared !== "npm" && declared !== "pnpm" && declared !== "yarn") {
-      return { success: false, packageManager: null, checks: [{ ...skipped("package manager", ""), skipped: false, success: false, stderr: `Unsupported package manager: ${manifest.packageManager}` }] };
+      return { success: false, failureKind: "verification", packageManager: null, checks: [{ ...skipped("package manager", ""), skipped: false, success: false, stderr: `Unsupported package manager: ${manifest.packageManager}` }] };
     }
     packageManager = declared;
   } else if (await exists(join(workspace.path, "pnpm-lock.yaml"))) packageManager = "pnpm";
   else if (await exists(join(workspace.path, "yarn.lock"))) packageManager = "yarn";
 
   const checks: VerificationCheck[] = [];
-  // Private short HOME/cache/tmp for this verifier only. No host secrets are inherited.
-  const ownedRuntime = await createVerifierRuntime();
+  let ownedRuntime: Awaited<ReturnType<typeof createVerifierRuntime>>;
+  try { ownedRuntime = await createVerifierRuntime(); }
+  catch { return infrastructureFailure("setup", "Verifier private temporary runtime could not be created."); }
   const runtime = ownedRuntime.path;
+  let failure: VerificationResult | undefined;
+  const launch = (command: string[], timeoutMs: number) => {
+    const sandbox = verifierSandboxCommand(workspace.path, runtime, command);
+    return boundedProcess(sandbox.binary, sandbox.args, { cwd: workspace.path, env: verifierEnvironment(runtime),
+      timeoutMs, ...(options.signal ? { signal: options.signal } : {}) });
+  };
+  // Only these known verifier-owned operations can signal an infrastructure error.
+  const readBoundary = async (path: string): Promise<{ ready?: boolean; started?: boolean; stage?: VerifierInfrastructureFailure["stage"]; message?: string }> => {
+    try {
+      const value = JSON.parse(await readFile(path, "utf8"));
+      if (!value || typeof value !== "object") return {};
+      return { ready: value.ready === true, started: value.started === true,
+        ...(["setup", "sandbox", "launcher"].includes(value.stage) && typeof value.message === "string"
+          ? { stage: value.stage, message: value.message.slice(0, 500) } : {}) };
+    } catch { return {}; }
+  };
   try {
+    await writeFile(join(runtime, loopbackGuardFilename), loopbackGuard, { mode: 0o400, flag: "wx" });
+    if (checkNames.some(name => typeof manifest.scripts?.[name] === "string")) {
+      const path = join(runtime, "preflight.json");
+      const probe = await launch([process.execPath, "-e", runtimeProbe, path], Math.min(timeout, 5000));
+      const boundary = await readBoundary(path);
+      if (probe.failed || !boundary.ready) failure = infrastructureFailure(boundary.stage ?? "sandbox",
+        boundary.message ?? "Verifier sandbox/startup probe could not execute correctly.");
+    }
     for (const name of checkNames) {
+      if (failure) break;
       if (typeof manifest.scripts?.[name] !== "string") {
         checks.push(skipped(name, "Script is not defined."));
         continue;
@@ -82,72 +114,31 @@ export async function verifyWorktree(workspace: TaskWorktree, options: {
       options.signal?.throwIfAborted();
       const args = ["run", name];
       const started = performance.now();
+      const path = join(runtime, `${name}-launcher.json`);
       try {
-        // `codex sandbox` is a local OS sandbox launcher, not an AI invocation.
-        const child = execa("codex", [
-          "sandbox", "-c", 'sandbox_mode="workspace-write"',
-          ...workspaceSandboxArgs,
-          "-c", `sandbox_workspace_write.writable_roots=${JSON.stringify([runtime])}`,
-          "--allow-unix-socket", runtime,
-          "--", packageManager, ...args,
-        ], {
-          cwd: workspace.path,
-          stdin: "ignore",
-          reject: false,
-          timeout,
-          forceKillAfterDelay: 1000,
-          maxBuffer: 1024 * 1024,
-          detached: process.platform !== "win32",
-          ...(options.signal ? { cancelSignal: options.signal } : {}),
-          extendEnv: false,
-          env: {
-            PATH: process.env.PATH ?? "",
-            HOME: runtime,
-            TMPDIR: runtime,
-            TMP: runtime,
-            TEMP: runtime,
-            CI: "true",
-            npm_config_cache: join(runtime, "npm-cache"),
-            npm_config_update_notifier: "false",
-            npm_config_audit: "false",
-            npm_config_fund: "false",
-            npm_config_yes: "false",
-            COREPACK_ENABLE_NETWORK: "0",
-            COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
-          },
-        });
-        let cleanupError: unknown;
-        const killGroup = () => {
-          if (child.pid && process.platform !== "win32") {
-            try { process.kill(-child.pid, "SIGKILL"); }
-            catch (error) {
-              if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) cleanupError = error;
-            }
-          }
-        };
-        // Kill the whole group before awaiting drained stdio: descendants may hold the pipes open.
-        const groupTimeout = setTimeout(killGroup, timeout + 1000);
-        options.signal?.addEventListener("abort", killGroup, { once: true });
-        let result;
-        try { result = await child; }
-        finally {
-          clearTimeout(groupTimeout);
-          options.signal?.removeEventListener("abort", killGroup);
-          killGroup();
-          if (cleanupError) throw cleanupError;
+        const result = await launch([process.execPath, "-e", checkLauncher, path, packageManager, ...args], timeout);
+        const boundary = await readBoundary(path);
+        if (!boundary.started) {
+          failure = infrastructureFailure(boundary.stage ?? "launcher",
+            boundary.message ?? "Verifier check launcher could not execute the requested check.");
+          break;
         }
         checks.push({ name, command: [packageManager, ...args].join(" "), success: !result.failed && result.exitCode === 0,
           skipped: false, exitCode: result.exitCode ?? null, stdout: result.stdout.slice(0, outputLimit),
           stderr: result.stderr.slice(0, outputLimit) || (result.failed ? result.shortMessage?.slice(0, outputLimit) ?? "Verification command failed." : ""),
           durationMs: Math.round(performance.now() - started), timedOut: result.timedOut ?? false });
-      } catch (error) {
-        checks.push({ ...skipped(name, ""), skipped: false, success: false, command: [packageManager, ...args].join(" "),
-          stderr: String(error).slice(0, outputLimit), durationMs: Math.round(performance.now() - started) });
+      } catch {
+        failure = infrastructureFailure("launcher", "Verifier process execution or process-group cleanup failed.");
       }
     }
+  } catch {
+    failure = infrastructureFailure("setup", "Verifier sandbox/runtime setup failed before checks could execute.");
   } finally {
-    // Only this freshly generated temporary directory is removed; the worktree is preserved.
-    await ownedRuntime.cleanup();
+    try { await ownedRuntime.cleanup(); }
+    catch { failure = infrastructureFailure("cleanup", "Verifier private runtime cleanup failed; retained worktree is preserved."); }
   }
-  return { success: checks.every(check => check.success), packageManager, checks };
+  options.signal?.throwIfAborted();
+  if (failure) return { ...failure, packageManager, checks: [...checks, ...failure.checks] };
+  const success = checks.every(check => check.success);
+  return { success, failureKind: success ? null : "verification", packageManager, checks };
 }

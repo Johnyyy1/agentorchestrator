@@ -136,7 +136,9 @@ npm run opencode:test
 ```
 
 První tři používají fake coding adapters/CLI; verifier launcher je lokální
-`codex sandbox`, nikoli AI inference. Integration ověřuje oba workery, ukládání
+macOS `sandbox-exec`, nikoli AI inference. Jeho TCP/Node fixture výjimka
+nemění OpenCode worker sandbox; přesnou inbound hranici a omezení popisuje
+[architektura](architecture.md#verifikace). Integration ověřuje oba workery, ukládání
 route před editací, čtyři checks, failure po editaci s durable eskalací a unavailable
 fallback před execution. Nové orchestration:test navíc ověřuje autorizovaný repair handoff. `opencode:unit` také skutečně ověřuje OS odmítnutí external read/write,
 symlink escape a `.git` write, JSON/text parser, stderr help, odmítnutí

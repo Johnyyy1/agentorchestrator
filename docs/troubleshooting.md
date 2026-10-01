@@ -76,7 +76,7 @@ worktree; retry může čerpat další kvótu. Chief timeout je zvláštní nast
 | Invalid/nested root | Absolutní JONAS_OS_WORKTREE_DIR mimo všechny source checkouty |
 | Cleanup odmítá workspace | Skutečná run.workspace, původní root, platná registrace; zachovej dirty práci |
 | tsx/tsc/deps not found | Worktree nemá automaticky node_modules; explicitní provisioning |
-| Check potřebuje síť, DB, secret | Verifier má izolované env a zakázanou síť |
+| Check potřebuje síť, DB, secret | Verifier má izolované env; pouze omezené TCP localhost fixtures, žádný externí outbound |
 | Package manager chce download | Zajisti binárku/cache; Corepack síť je vypnutá |
 | Success, ale všechny skipped | Chybí podporované checks; skips nejsou testování |
 
@@ -207,17 +207,36 @@ Coding bez repository oprav novým explicitním zadáním s repository kontextem
 `tsx` 4.23.15 sestavuje IPC cestu z `os.tmpdir()` jako
 `tsx-<euid>/<pid>.pipe`. Na macOS má `sockaddr_un.sun_path` 104 bajtů; dlouhý
 worktree/TMPDIR může selhat ještě před assertions. Verifier proto používá
-vlastní krátký temp adresář, nikoli cestu pod worktree. `listen EPERM` značí
-omezení sandboxu: instalovaný Codex launcher musí podporovat
-`--allow-unix-socket`, omezený na vlastní runtime. Síť se tím nepovoluje.
-Ověření bez inference: `npm run verifier:unit`. Tests se nepřeskakují.
+vlastní krátký temp adresář, nikoli cestu pod worktree. AF_UNIX bind/connect
+povoluje macOS profil pouze pod tímto runtime. Ověření bez inference:
+`npm run verifier:unit`. Tests se nepřeskakují.
 
 ## Verifier: HTTP fixture `listen EPERM 127.0.0.1`
 
-Po opravě tsx IPC může `npm test` spustit assertions a následně selhat na
-HTTP fixture serverech v `src/local/ollama.test.ts`. Verifier TCP síť blokuje;
-krátký Unix socket runtime tento TCP kontrakt nemění. Úspěch `npm test` mimo
-sandbox není důkazem PASS ve verifieru. Task nesmí dostat completed ani review
-přes selhání; zachovej logs/worktree a řeš kompatibilitu fixture testů se
-sandboxem v samostatné změně. Nepovoluj síť ani nepřeskakuj testy jen pro smoke.
-[Skutečný výsledek jediného reálného E2E](runtime-e2e-fixes-report.md).
+Příčina byla síťová deny politika původního Codex verifier sandboxu, nikoli
+assertion nebo coding chyba. Nový samostatný verifier profil povoluje TCP
+`localhost:*`; Node guard vyžaduje explicitní 127.0.0.1/::1 (`localhost` přepíše
+na IPv4 loopback). 0.0.0.0, ::, chybějící host a LAN bind odmítá guard.
+**Guard není OS hranice**: Seatbelt localhost zahrnuje i wildcard/host LAN
+adresy. Jiný runtime nebo kód obcházející guard může takto listenovat; používej
+jen důvěryhodné fixtures. Externí TCP outbound je dál odmítaný profilem.
+[Report a přesné omezení](verifier-loopback-report.md).
+
+Verifier před testy ověří vlastní temp/HTTP runtime. Známé setup/probe/spawn
+nebo cleanup chyby vrátí `Verifier infrastructure failure` se zprávou max. 500
+znaků, například relevantním `listen EPERM 127.0.0.1`. Orchestrace otevře
+`infrastructure` eskalaci a zachová worktree i historické číslo pokusu; žádný
+coding retry ani repair Chief se nespustí. Odpověď na eskalaci sama verifier
+nepřespouští a neautorizuje nový coding pokus nad nezměněným diffem.
+Chyba uvnitř již spuštěného testu včetně EPERM zůstává `verification`; systém
+ji nesmí odhadovat podle textu logu. Nenulové assertions/typecheck/lint/build
+zůstávají standardní cestou opravy. Root lint/build bez scriptu jsou SKIPPED.
+
+## Verifier: vnořený `sandbox_apply: Operation not permitted`
+
+macOS odmítá druhé sandbox_init i pod vnějším `allow default`. Proto
+`npm test` obsahuje pure/parser/HTTP/Git regrese a skutečné worker/reviewer
+OS regrese mají samostatné `npm run sandbox:test` mimo verifier. Žádný test
+nebyl přeskočen ani boundary uvolněná; úplná deterministická kontrola je
+`npm test` + `npm run sandbox:test` (a podle dopadu DB integrační sady).
+Samostatné `opencode:unit` i `reviewer:test` stále zahrnují své původní OS testy.

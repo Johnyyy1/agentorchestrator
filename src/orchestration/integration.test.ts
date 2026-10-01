@@ -14,6 +14,9 @@ import { createTask } from "../tasks/create-task.js";
 import { answerEscalation, listOpenEscalations, abandonTask } from "../escalations/service.js";
 import { orchestrateCodingTask, recoverCodingTasks } from "./service.js";
 import type { OrchestrationOptions } from "./service.js";
+import { infrastructureFailure, verifierFailureMessage } from "../verification/infrastructure.js";
+import { getTaskDetail } from "../control-plane/queries.js";
+import { taskOutcome } from "../control-plane/outcome.js";
 import { executeTask } from "../workers/execute.js";
 import { createTaskWorktree, inspectTaskWorktree, removeTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree } from "../git/worktree.js";
@@ -111,6 +114,33 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
       assert.equal(state.task.status, "completed"); assert.equal(state.runs.length, 2); assert.equal(state.runs[0]?.failureKind, "verification");
       assert.equal(state.runs[1]?.parentRunId, state.runs[0]?.id); assert.deepEqual(state.runs[1]?.workspace, state.runs[0]?.workspace);
       assert.equal(state.reviews.length, 1); assert.deepEqual(calls.get(task.id), ["opencode", "opencode"]);
+    });
+    await t.test("verifier infrastructure retains one attempt and bypasses repair Chief/reviewer even on redelivery and human answer", async () => {
+      const task = await create("infra-no-retry", 2); const opts = options(task.title);
+      const infrastructure = infrastructureFailure("sandbox", "Local test server could not start inside verifier sandbox. listen EPERM 127.0.0.1");
+      const guarded = { ...opts, executor: async (...args: Parameters<NonNullable<OrchestrationOptions['executor']>>) => {
+        const output = await opts.executor!(...args);
+        return { ...output, success: false, verification: infrastructure, error: verifierFailureMessage(infrastructure) };
+      }, repair: async () => { throw new Error("Infrastructure must not call repair Chief"); },
+      review: async () => { throw new Error("Infrastructure must not call reviewer"); } };
+      await orchestrateCodingTask(task.id, guarded);
+      let saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.runs.length, 1);
+      assert.equal(saved.runs[0]?.failureKind, "infrastructure"); assert.equal(saved.runs[0]?.attempt, 1);
+      assert.equal(saved.escalations[0]?.reasonType, "infrastructure"); assert.equal(saved.reviews.length, 0);
+      assert.ok(saved.runs[0]?.workspace); assert.equal(calls.get(task.id)?.length, 1);
+      assert.equal(saved.events.some(e => e.kind === "repair_started" || e.kind === "review_started"), false);
+      const detail = await getTaskDetail(task.id); assert.ok(detail);
+      assert.match(taskOutcome(detail).reason!, /^Verifier infrastructure failure: Local test server/);
+      assert.match(taskOutcome(detail).reason!, /listen EPERM 127.0.0.1/);
+      assert.ok(taskOutcome(detail).reason!.length < 600);
+      await orchestrateCodingTask(task.id, guarded); // settled/redelivered job
+      await answerEscalation(saved.escalations[0]!.id, "Infrastructure diagnosed; do not reauthor unchanged code.");
+      await orchestrateCodingTask(task.id, guarded);
+      saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.runs.length, 1);
+      assert.equal(calls.get(task.id)?.length, 1); assert.equal(saved.reviews.length, 0);
+      assert.equal(saved.escalations.at(-1)?.reasonType, "infrastructure");
     });
     await t.test("C: review findings go through Chief, new attempt verifies and reviews again", async () => {
       const task = await create("review-repair"); await orchestrateCodingTask(task.id, options(task.title)); const state = await load(task.id);

@@ -17,7 +17,7 @@ export function isVerifiedCodingExecution(result: ExecutionResult | undefined): 
     (result.route?.worker === "opencode" || result.route?.worker === "codex") &&
     worker?.success === true &&
     !!result.workspace && !!result.git && Array.isArray(result.git.changedFiles) &&
-    result.verification?.success === true && Array.isArray(result.verification.checks) &&
+    result.verification?.success === true && result.verification.failureKind !== "infrastructure" && Array.isArray(result.verification.checks) &&
     result.verification.checks.length > 0 && result.verification.checks.every(check => check.success === true);
 }
 

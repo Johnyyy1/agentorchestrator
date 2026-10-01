@@ -290,3 +290,10 @@ Chybějící worker summary samo není completion invariant ani historická
 evidence warning. Pokud poslední coding execution, workspace/Git, verifier
 a nezávislé APPROVE odpovídají, Final Result zobrazí metadata a text
 „No final worker summary was captured.“ bez dalšího model callu.
+
+Verifier infrastruktura se zobrazuje v existujícím Final Result/waiting reason
+a run error jako `Verifier infrastructure failure: …`, s bounded relevantním
+důvodem a eskalací `infrastructure`. Check `verifier` zaznamenává infrastrukturní
+selhání odděleně od běžných neúspěšných test/typecheck checks. Nedochází k UI
+redesignu ani k předstírání review/completion. Číslo provedeného coding pokusu
+zůstává historicky zachované; infrastruktura nespouští další coding pokus.

@@ -176,3 +176,11 @@ provider retry; transportní chování samotných CLI je omezené host timeoutem
 Nejsou implementované memory/vector retrieval, qwen3-embedding, roadmap
 retrieval, další autonomní úkol po úspěchu, schedules, webhooks, dashboard,
 OpenRouter, auto commit/push/merge/deploy ani self-modifying prompts.
+
+Verifier-owned setup/probe/launcher/cleanup failure má explicitní
+`verification.failureKind: infrastructure` a známý stage. Přes run
+`failureKind: infrastructure` vede rovnou do `waiting_human`, ještě před repair
+Chiefem. Historické číslo pokusu zůstává započtené a cap se nemění. Redelivery
+ani human answer nad stejným infrastrukturním výsledkem nevyvolá nový coding
+pokus; tato změna nepřidává automatické reverify. Běžné aplikační failure
+checks pokračují existující opravnou cestou.

@@ -7,15 +7,17 @@
 | Node.js + npm | Node >=22.13, doporučená řada 24 | Vždy |
 | Git | CLI v `PATH` | Klonování a repository coding |
 | PostgreSQL | 16; Docker Compose plugin nebo vlastní server | Ukládání a vykonávání úkolů |
-| Codex CLI | `exec --json`, `--ignore-user-config`, `--ignore-rules`, `sandbox` | Coding; sandbox i ve worktree testech |
+| Codex CLI | `exec --json`, `--ignore-user-config`, `--ignore-rules`, `sandbox` | Codex coding worker |
+| macOS Seatbelt | `/usr/bin/sandbox-exec` | Deterministický verifier; žádný unrestricted fallback |
 | Antigravity CLI | `agy -p`, `--output-format json`, `--print-timeout` | Research, planning, review, utility |
 | Ollama + lokální model | `/api/tags`, `/api/show`, `/api/chat` se structured outputs | Chief a lokální OpenCode worker |
 | OpenCode + Ollama | `run --model`, ověřený config/agent, JSON preferovaný, macOS sandbox-exec | Volitelný lokální coding worker |
 
 Node minimum vychází z požadavků závislostí. Coding sandbox byl ověřen
 na macOS s `codex-cli 0.159.2`; nejde o garanci každé starší či budoucí verze.
-Chief byl ověřen s Ollama **0.32.14**. Na Linuxu nejprve ověř podporu
-použitého `codex sandbox` launcheru. Windows není ověřený pro celý workflow:
+Chief byl ověřen s Ollama **0.32.14**. Verifier, lokální worker a nezávislá
+review hranice aktuálně vyžadují macOS. Na Linuxu/Windows verifier bezpečně
+vrátí infrastructure failure; celý workflow zde není ověřený:
 worktree manager používá unixové předpoklady jako `/dev/null`, verifier na
 Unixu ukončuje procesní skupiny.
 
@@ -159,7 +161,7 @@ Readiness neprovádí inferenci/download: ověří binárku, explicitní model s
 agent/permissions, start v sandboxu, Ollama model a discovery přes `opencode models ollama`. Při chybě se
 způsobilý task **před execution** směruje na Codex, takže musí být přihlášený,
 pokud tento fallback chceš používat. Na jiné platformě je lokální cesta
-nedostupná. Verifikace OpenCode změn stále potřebuje `codex sandbox`, který
+nedostupná. Verifikace OpenCode změn potřebuje macOS `sandbox-exec`, který
 nevolá AI ani cloud. Pro dobrovolný test se skutečným lokálním modelem slouží
 `npm run opencode:test` (disposable repo a DB/queue fixture, žádný fallback na Codex).
 
@@ -184,15 +186,20 @@ nevolá AI ani cloud. Pro dobrovolný test se skutečným lokálním modelem slo
 | `LOCAL_CODING_MAX_DIFFICULTY` | `2` | 1–3; eligibility limit lokálního coding |
 
 Přihlašovací údaje CLI spravují samotná CLI mimo `.env` tohoto projektu.
-`PATH` musí obsahovat potřebné binárky pro worker i verifier. Codex sandbox
-launcher pro verifier musí podporovat `--allow-unix-socket` (ověř
-`codex sandbox --help`); výjimka je omezena na krátký vlastní runtime.
+`PATH` musí obsahovat potřebné binárky pro worker i verifier. Verifier používá
+macOS `sandbox-exec`, krátký vlastní runtime a Node guard zděděný přes
+`NODE_OPTIONS`. Testové TCP servery binduj explicitně na 127.0.0.1 nebo ::1.
+Profil odmítá externí outbound, ale Seatbelt neumí přesnou izolaci inbound
+loopback proti LAN; Node guard není OS hranice pro jiné runtime ani hostile
+kód. Podrobnosti jsou v [architektuře](architecture.md#verifikace).
+Nové proměnné prostředí ani konfigurace workerů se nepřidávají.
 
 ## Spuštění, zastavení a aktualizace
 
 ```sh
 npm run typecheck
 npm test
+npm run sandbox:test
 npm run worker
 ```
 
@@ -215,6 +222,7 @@ npm ci
 npm run db:migrate
 npm run typecheck
 npm test
+npm run sandbox:test
 npm run worker
 ```
 

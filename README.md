@@ -165,3 +165,10 @@ Control Plane obsahuje [Repository Registry V1](docs/control-plane.md#první-rep
 pro první Git checkout bez historických úkolů a
 [Final Result](docs/control-plane.md#výsledek-úkolu) s veřejným worker reportem,
 verification a nezávislým review. Po aktualizaci spusť `npm run db:migrate`.
+
+Deterministický verifier nyní podporuje lokální Node HTTP fixtures a explicitně
+rozlišuje chybu vlastní infrastruktury od aplikační verification failure.
+macOS inbound omezení, Node guard a ověření popisuje
+[verifier loopback report](docs/verifier-loopback-report.md). Pro úplné
+deterministické regrese spusť `npm test` i `npm run sandbox:test`; macOS
+neumožňuje vnořené sandbox_apply.

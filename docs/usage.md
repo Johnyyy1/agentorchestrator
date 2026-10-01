@@ -136,8 +136,9 @@ se samostatnými testy bez instalace (např. čisté `node --test`). Složitěj�
 projekty potřebují vlastní explicitní provisioning/integraci.
 
 Verifier spouští existující `test`, `typecheck`, `lint`, `build` v tomto
-pořadí přes npm/pnpm/yarn v lokálním Codex OS sandboxu; každý má limit
-60 sekund a zakázanou síť. Placeholder `test` s exit 1 způsobí failure.
+pořadí přes npm/pnpm/yarn v macOS Seatbelt verifier sandboxu; každý má limit
+60 sekund. TCP fixture výjimku a Node guard včetně inbound omezení popisuje
+[architektura](architecture.md#verifikace). Placeholder `test` s exit 1 způsobí failure.
 Chybějící skripty jsou `skipped`; pokud chybí všechny nebo `package.json`,
 může být aggregate success i se všemi skips. To není důkaz otestování.
 
@@ -296,3 +297,19 @@ zůstanou. Při vyčerpaném capu nevznikne další pokus ani po odpovědi.
 Inspect výpis nyní obsahuje i reviews, escalations, audit events a checkpoint.
 Před resuming přerušené invocation ověř, že původní provider už neběží.
 [Celý lifecycle, schema a limity](repair-loop.md).
+
+## Chyba infrastruktury verifieru
+
+`Verifier infrastructure failure` znamená selhání známého setup/probe/launcher/cleanup
+kroku Jonas OS, ne důkaz chybného worker diffu. Task zůstane `waiting_human`
+s důvodem `infrastructure`, worktree se zachová a další coding worker, repair
+Chief ani reviewer se automaticky nespustí. Historický pokus zůstává započtený;
+`maxAttempts` se nezvyšuje ani neobnovuje. Human answer nad tímto výsledkem
+znovu bezpečně eskaluje, nepřespustí verifier ani nezměněný kód. Operátor
+nejprve opraví infrastrukturu a zkontroluje zachované dílo; tato změna nepřidává
+nový příkaz pro samostatné reverify/resume.
+
+Běžný nenulový exit/timeout spuštěného testu, typechecku, lintu nebo buildu
+zůstává verification failure se stávající bounded repair politikou. Chybějící
+script je výslovně SKIPPED. Testové HTTP servery používají explicitní
+127.0.0.1/::1. Viz [síťová omezení verifieru](architecture.md#verifikace).

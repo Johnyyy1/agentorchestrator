@@ -155,12 +155,44 @@ lock, pak npm. Nepodporovaný explicitní manager či neplatný manifest je
 failure. Chybějící manifest/skripty jsou skips. Checks jsou test, typecheck,
 lint, build v tomto pořadí.
 
-Lokální `codex sandbox` sám nevolá AI model. Síť je zakázaná, env izolované,
-CI true, stdin ignorovaný. HOME/tmp/cache jsou v čerstvém adresáři uvnitř
-worktree; dependencies se neinstalují. Limit je 60 sekund na check,
-max. 1 MiB buffer a uložený stdout/stderr max. 64000 znaků. Na Unixu se při
-timeoutu, abortu i cleanup ukončí procesní skupina. Při sandbox failure
-neexistuje unrestricted fallback.
+Verifier používá vlastní macOS `/usr/bin/sandbox-exec` profil, bez AI inference.
+Env je izolované, CI true, stdin ignorovaný. HOME/tmp/cache jsou v krátkém
+vlastním runtime; dependencies se neinstalují. Limit je 60 sekund na check,
+max. 2 MiB buffer a uložený stdout/stderr max. 64000 znaků. Při timeoutu,
+abortu i cleanup se ukončí procesní skupina. Bez funkční Seatbelt hranice není
+unrestricted ani jiný platformní fallback.
+
+Síťová výjimka patří pouze verifieru: TCP `localhost:*` pro bind, inbound a
+outbound; AF_UNIX bind/connect pouze pod vlastním runtime. UDP, DNS a přímé
+externí TCP spojení zůstávají zakázané. **Seatbelt `localhost` pro bind/inbound
+znamená také wildcard a adresy přiřazené stroji, nikoli pouze loopback.**
+Přesné kernelové rozlišení 127.0.0.1/::1 proti LAN tímto filtrem nelze vynutit.
+Po explicitní volbě operátora je proto doplněný Node guard přes `NODE_OPTIONS`:
+`net.Server.listen` dovolí jen explicitní 127.0.0.1/::1 a `localhost` přepíše
+na 127.0.0.1. Odmítne implicitní host, 0.0.0.0, ::, LAN a předané socket handles.
+Unix paths nadále omezuje OS profil. Guard file je pro sandbox read-only.
+Guard je ochrana běžných Node/npm/tsx fixtures, **není OS bezpečnostní hranice**:
+kód může změnit Node API, odstranit NODE_OPTIONS nebo spustit jiný runtime.
+Takový proces může vytvořit wildcard/LAN listener. Nespouštěj zde nedůvěryhodné
+síťové testy; přísná izolace inbound vyžaduje jinou OS hranici. Ani outbound
+matcher neposkytuje obecnou izolaci od služeb tohoto stroje. Worker sandboxy
+se nemění. Více důkazů a omezení v [reportu](verifier-loopback-report.md).
+
+Před aplikačními checks proběhne pevný verifier-owned probe: temp write a
+HTTP bind/request/close na 127.0.0.1 i ::1. Poté launcher zapisuje strukturovaný
+spawn checkpoint package manageru. Jen známé runtime operace klasifikují
+`failureKind: infrastructure` se stage setup/sandbox/launcher/cleanup a zprávou
+max. 500 znaků; běžný nenulový exit/timeout spuštěného checku je `verification`.
+Neplatný manifest/manager je také aplikační verification failure. Logové regexy
+se nepoužívají: assertion obsahující EPERM zůstane aplikační failure. Chyby,
+které vzniknou až uvnitř spuštěného testu, se automaticky nerozpoznávají jako
+infrastruktura. Setup/probe/launcher failure zastaví další checks, zachová
+worktree, neumožní completion ani review.
+
+OS regression tests workeru/revieweru běží samostatně přes `sandbox:test`,
+protože macOS zakazuje vnořené sandbox_apply i pod allow default. Root
+`npm test` zachovává skutečné aplikační/pure/HTTP/Git checks; původní OS
+assertions se nepřeskakují a worker/reviewer policy se neuvolňuje.
 
 Výsledek doplní git status, changedFiles, diffStat vůči base commitu a
 dirty/truncation flags (max. 1000 cest, 64000 znaků výpisu). Všechny skips
@@ -273,6 +305,7 @@ warning při chybějících důkazech nebo novějším neúspěšném pokusu; ul
 Verifier má vlastní krátký runtime `/tmp/jo-v-<náhodný suffix>` (na macOS
 canonical `/private/tmp/…`), atomicky vytvořený s právy 0700. `TMPDIR`, `TMP`,
 `TEMP`, HOME a npm cache míří pouze do něj. Cwd zůstává worktree; launcher
-povolí zápisy a AF_UNIX IPC jen v tomto runtime a zachová zakázanou síť
-a obecný `/tmp`. Worker tuto výjimku nedostává. Runtime má limit 40 bajtů
+povolí zápisy do worktree a tohoto runtime, AF_UNIX IPC jen v runtime a TCP
+podle výše popsané omezené politiky. Obecný `/tmp` zůstává read-only. Worker
+tuto výjimku nedostává. Runtime má limit 40 bajtů
 a cleanup kontroluje canonical cestu, inode, device a vlastníka.

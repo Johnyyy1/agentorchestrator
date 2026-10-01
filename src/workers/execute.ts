@@ -16,6 +16,7 @@ import { assertTaskWorktree, createTaskWorktree, inspectTaskWorktree } from "../
 import type { TaskWorktree, WorktreeInspection } from "../git/worktree.js";
 import { verifyWorktree } from "../verification/verifier.js";
 import type { VerificationResult } from "../verification/verifier.js";
+import { verifierFailureMessage } from "../verification/infrastructure.js";
 
 import type {
   TaskSpec,
@@ -160,7 +161,8 @@ export async function executeTask(
       // Every attempt verifies independently; application orchestration decides repairs.
       result.verification = await verifyWorktree(workspace, options.signal ? { signal: options.signal } : {});
       result.success = workerResult.success && result.verification.success;
-      if (!result.success) result.error = workerResult.success ? "Deterministic verification failed." : `${route.worker} execution failed.`;
+      if (!result.success) result.error = result.verification.failureKind === "infrastructure" || workerResult.success
+        ? verifierFailureMessage(result.verification) : `${route.worker} execution failed.`;
       console.info("Coding worker end:", JSON.stringify({ taskId: workspace.taskId, worker: route.worker,
         durationMs: Math.round(performance.now() - started), workerSuccess: workerResult.success, verificationSuccess: result.verification.success }));
     } else {
@@ -191,6 +193,7 @@ export async function executeTask(
     // Keep legacy exception behavior outside the repository execution pipeline.
     if (!workspace) throw error;
   }
+  if (result.verification?.failureKind === "infrastructure") result.error = verifierFailureMessage(result.verification);
   if (workspace) {
     try { result.git = await inspectTaskWorktree(workspace); }
     catch (error) {

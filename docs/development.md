@@ -51,8 +51,8 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | db:migrate | Aplikuje migrace do nakonfigurované DB |
 | db:test | Dočasný task insert/read/delete ve skutečné DB |
 | queue:test | DB, unikátní queue, fake executor; i restart/přerušení |
-| verifier:unit | Skutečný tsx IPC v dlouhém worktree a verifier OS sandbox; bez DB/AI |
-| worktree:test | DB, Git, Codex OS sandbox; fake AI executor a CLI parser test |
+| verifier:unit | Dlouhé worktree + skutečný tsx/HTTP IPv4/IPv6, OS outbound deny, Node guard, assertion/startup/spawn klasifikace a cleanup; bez DB/AI |
+| worktree:test | DB, Git, macOS Seatbelt verifier; fake AI executor a CLI parser test |
 | worker | Consumer hlavní queue; může spouštět skutečné providery |
 | codex:test | Skutečný Codex, může čerpat kvótu |
 | agy:test | Skutečný Antigravity, může čerpat kvótu |
@@ -61,6 +61,9 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | chief:test | Dvě lokální inference + izolovaná queue integration; žádný execution provider |
 | capability-router:test | Pure policy assertions, včetně fallbacků; bez DB/modelů |
 | opencode:check | Binárka, capabilities/config, sandbox startup, lokální model discovery; bez inference/downloadu |
+| opencode:pure / reviewer:pure | Parsery, policy a schema bez nového OS sandboxu; součást npm test |
+| opencode:os / reviewer:os | Původní skutečné worker/reviewer OS regrese s fake CLI, bez inference |
+| sandbox:test | opencode:os + reviewer:os + verifier:unit; spouštěj mimo verifier |
 | opencode:unit | Fake OpenCode + HTTP fixtures, parser/permissions a reálná macOS OS hranice |
 | opencode:test | Reálný lokální coding smoke v disposable repo + DB/queue persistence, žádný cloud fallback |
 | repair:unit | Strict repair schema/bridge, state/cap/redakce, fake Ollama; bez skutečné inference |
@@ -80,7 +83,7 @@ přihlášení providerů nebo skutečného modelu.
 
 OpenCode OS fixture vyžaduje macOS; její success
 nelze deklarovat jako ověření jiné platformy. Na ostatních OS test nedokládá funkční OS hranici. Skutečný OpenCode smoke test
-potřebuje kompatibilní CLI, lokální model, DB a codex sandbox; automaticky nic neinstaluje.
+potřebuje kompatibilní CLI, lokální model, DB a macOS Seatbelt; automaticky nic neinstaluje.
 
 Pro DB/frontu/worktrees na vývojové instalaci:
 
@@ -94,7 +97,7 @@ npm run orchestration:test
 
 Queue/worktree testy používají vlastní unikátní queue a uklízejí své tasky,
 runy i fixture repozitáře. Nevolají AI model. Worktree test potřebuje
-funkční lokální codex sandbox a test parseru/oprávnění používá fake executable.
+funkční macOS Seatbelt verifier a test parseru/oprávnění používá fake executable.
 Ověřuje success/failure verifikace, timeout, sandbox/cleanup guardy a ochranu
 originálního checkoutu. Nespouštěj je proti cizí nebo produkční DB. Při tvrdém
 přerušení inspectuj zbývající testová data; globální mazání není cleanup.
@@ -161,6 +164,26 @@ bez fabricace worker reportu či přepisování historie.
 Socket regresi spusť samostatně `npm run verifier:unit`. Vytváří skutečný
 Git worktree s dlouhou cestou a přes produkční verifier spouští instalovaný
 `tsx`. Ověří existující AF_UNIX socket pod krátkým TMPDIR, nezměněný cwd,
-zákaz zápisu do source i mimo vlastní runtime a odstranění runtime po běhu.
+HTTP request/response na 127.0.0.1 i ::1, Node odmítnutí wildcard/LAN bind,
+OS odmítnutí externího TCP, zákaz zápisu do source i mimo vlastní runtime
+a odstranění runtime po běhu. Failing assertion s EPERM není infrastructure;
+chybějící manager a sandbox startup failure jsou infrastructure. DB
+`npm run orchestration:test` ověřuje jediný zachovaný pokus, žádný repair/review
+a stejné bezpečné zastavení i po redelivery nebo human answer. Vše bez inference.
 Jde o integraci OS launcheru, nespouští se v sandboxovaném `npm test` uvnitř
 verifieru (tam by vznikl další vnořený OS sandbox/runtime).
+
+Root `npm test` neprovádí OS-in-OS regrese: macOS odmítá vnořené
+`sandbox_apply` i s vnějším allow default. Původní testy se přesunuly celé
+do `opencode-sandbox.test.ts` a `review-sandbox.test.ts`, žádné assertions
+nebyly vynechané. Úplnou sadu spouštěj z kořene checkoutu:
+
+```sh
+npm run typecheck
+npm test
+npm run sandbox:test
+npm run orchestration:test
+```
+
+`opencode:unit` a `reviewer:test` nadále zahrnují pure i OS testy.
+Root lint/build se nepřidávají: jejich nepřítomnost zůstává verifier SKIPPED.
