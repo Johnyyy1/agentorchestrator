@@ -60,3 +60,13 @@ test('historical utility/local-coding repository completion exposes missing evid
   assert.equal(outcome.run, null); assert.equal(outcome.summary, null);
   assert.equal(detail.task.status, 'completed', 'Read model warns without rewriting historical database state.');
 });
+
+test('verified completion without public summary retains metadata and the missing-summary fallback', () => {
+  const detail = createFixtureStore().detail(fixtureTaskId)!;
+  detail.runs[1]!.message = '';
+  const outcome = taskOutcome(detail);
+  assert.equal(outcome.reason, null);
+  assert.equal(outcome.summary, null);
+  assert.equal(outcome.review?.decision, 'approve');
+  assert.ok(outcome.run?.checks.length);
+});

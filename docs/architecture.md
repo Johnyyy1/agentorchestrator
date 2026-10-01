@@ -257,8 +257,7 @@ formát nevyžaduje. Žádná inference navíc ani změna completion policy.
 Obě místa zapisující task `completed` (general queue a durable `saveState`)
 volají `assertTaskCompletion()` pod task row lockem v téže transakci. Guard
 znovu načte sémantiku a právě poslední attempt; starší úspěch nestačí.
-`assertCodingCompletion()` vyžaduje coding worker, skutečný start, úspěch a
-neprázdný report, uložená metadata worktree shodná s výsledkem a taskem,
+`assertCodingCompletion()` vyžaduje coding worker, skutečný start, execution success, uložená metadata worktree shodná s výsledkem a taskem,
 Git changedFiles metadata, úspěšný neprázdný verifier result a nezávislý
 completed review s APPROVE pro stejné taskId/runId. Worktree se ještě ověří
 proti Git a canonical repository cestě. Skipped checks zůstávají podle
@@ -270,3 +269,10 @@ Historické completed rows se automaticky nepřepisují ani znovu nevykonávají
 jejich chybějící evidence zůstává viditelná a vyžaduje operátorský audit.
 Final Result navíc pro historický repository coding zobrazí explicitní invariant
 warning při chybějících důkazech nebo novějším neúspěšném pokusu; uložený stav nepřepisuje.
+
+Verifier má vlastní krátký runtime `/tmp/jo-v-<náhodný suffix>` (na macOS
+canonical `/private/tmp/…`), atomicky vytvořený s právy 0700. `TMPDIR`, `TMP`,
+`TEMP`, HOME a npm cache míří pouze do něj. Cwd zůstává worktree; launcher
+povolí zápisy a AF_UNIX IPC jen v tomto runtime a zachová zakázanou síť
+a obecný `/tmp`. Worker tuto výjimku nedostává. Runtime má limit 40 bajtů
+a cleanup kontroluje canonical cestu, inode, device a vlastníka.

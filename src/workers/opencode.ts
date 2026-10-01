@@ -12,13 +12,14 @@ export type OpenCodeResult = {
   success: boolean; exitCode: number; message: string | null; sessionId: string | null;
   model: string; usage: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } | null;
   durationMs: number; stderr: string; error: string | null; timedOut: boolean;
+  eventTypes?: Record<string, number>;
 };
 export function normalizedStderr(stderr: string): string {
   return stderr.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").trim().slice(0, 64000);
 }
 
-// JSONL emits text, step_finish, tool_use and error. Keep only public text
-// and token totals; tool inputs/outputs and reasoning events never leave here.
+// Keep only public text parts and token counts. Diagnostics contain event type
+// counts only, never tool payloads, reasoning, or the raw JSONL stream.
 export function parseOpenCodeOutput(stdout: string, exitCode: number, model: string,
   durationMs: number, stderr = "", failed = false, timedOut = false): OpenCodeResult {
   let message: string | null = null;
@@ -26,31 +27,47 @@ export function parseOpenCodeOutput(stdout: string, exitCode: number, model: str
   let error: string | null = null;
   let completed = false;
   let usage: OpenCodeResult["usage"] = null;
-  for (const line of stdout.split(/\r?\n/).filter(line => line.trim())) {
+  const eventTypes: Record<string, number> = Object.create(null);
+  const lines = stdout.length <= 2 * 1024 * 1024 ? stdout.split(/\r?\n/) : [];
+  if (stdout.length > 2 * 1024 * 1024 || lines.length > 4096) error = "OpenCode JSON event stream exceeds parsing limits.";
+  for (const line of error ? [] : lines) {
+    if (!line.trim()) continue;
+    if (line.length > 256000) { error = "OpenCode JSON event exceeds parsing limits."; break; }
     let event;
     try { event = JSON.parse(line); }
     catch { error = "Malformed OpenCode JSON event stream."; break; }
-    if (!event || typeof event !== "object" || typeof event.type !== "string") {
+    if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.type !== "string") {
       error = "Invalid OpenCode event envelope."; break;
     }
-    if (typeof event.sessionID === "string") sessionId = event.sessionID;
-    if (event.type === "text" && typeof event.part?.text === "string") message = event.part.text.slice(0, 64000);
+    const kind = /^[a-z][a-z0-9_.-]{0,63}$/.test(event.type) ? event.type : "other";
+    if (Object.hasOwn(eventTypes, kind) || Object.keys(eventTypes).length < 16) eventTypes[kind] = (eventTypes[kind] ?? 0) + 1;
+    if (typeof event.sessionID === "string") sessionId = event.sessionID.slice(0, 256);
+    if (event.type === "step_start") { completed = false; message = null; }
+    if (event.type === "text" && (event.part?.type === undefined || event.part.type === "text") &&
+        typeof event.part?.text === "string" && event.part.text.trim()) {
+      message = (message ? `${message}\n${event.part.text}` : event.part.text).slice(0, 64000);
+    }
     if (event.type === "error") error = "OpenCode reported a session error.";
+    if (event.type === "incomplete" || event.type === "abort" || event.type === "aborted") error = "OpenCode reported an incomplete session.";
     if (event.type === "step_finish") {
       completed = event.part?.reason === "stop";
+      if (!completed && event.part?.reason !== "tool-calls") error = "OpenCode reported an incomplete step.";
       const tokens = event.part?.tokens;
       for (const [source, target] of [["input", "inputTokens"], ["output", "outputTokens"], ["reasoning", "reasoningTokens"]] as const) {
-        if (typeof tokens?.[source] === "number" && Number.isFinite(tokens[source]) && tokens[source] >= 0) {
+        if (typeof tokens?.[source] === "number" && Number.isSafeInteger(tokens[source]) && tokens[source] >= 0) {
           usage ??= {};
-          usage[target] = (usage[target] ?? 0) + tokens[source];
+          const total = (usage[target] ?? 0) + tokens[source];
+          if (!Number.isSafeInteger(total)) { error = "OpenCode token totals exceed parsing limits."; break; }
+          usage[target] = total;
         }
       }
     }
   }
-  const success = exitCode === 0 && !failed && !error && completed && message !== null;
+  const success = exitCode === 0 && !failed && !timedOut && !error && completed;
   if (!success && !error) error = timedOut ? "OpenCode execution timed out." : "OpenCode did not complete successfully.";
   return { success, exitCode, message, sessionId, model, usage, durationMs,
-    stderr: normalizedStderr(stderr), error, timedOut };
+    stderr: normalizedStderr(stderr), error, timedOut,
+    ...(message === null ? { eventTypes } : {}) };
 }
 
 // Normal non-TTY output is public text; reasoning is never requested. Without
@@ -58,7 +75,7 @@ export function parseOpenCodeOutput(stdout: string, exitCode: number, model: str
 export function parseOpenCodeText(stdout: string, exitCode: number, model: string,
   durationMs: number, stderr = "", failed = false, timedOut = false): OpenCodeResult {
   const message = normalizedStderr(stdout);
-  const success = exitCode === 0 && !failed && !timedOut && message.length > 0 && stdout.length <= 64000;
+  const success = exitCode === 0 && !failed && !timedOut && stdout.length <= 64000;
   return { success, exitCode, message: message || null, sessionId: null, usage: null, model, durationMs,
     stderr: normalizedStderr(stderr), timedOut,
     error: success ? null : timedOut ? "OpenCode execution timed out." : "OpenCode text execution did not complete successfully." };

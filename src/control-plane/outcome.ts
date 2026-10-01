@@ -33,7 +33,7 @@ export function taskOutcome(detail: TaskDetailDto) {
   let incomplete = false;
   if (task.status === 'completed' && repositoryCoding) {
     incomplete = !run || run.id !== runs.at(-1)?.id || run.status !== 'completed' || run.workerSucceeded !== true ||
-      !run.message.trim() || !run.workspace || !run.git || !run.checks.length ||
+      !run.workspace || !run.git || !run.checks.length ||
       run.checks.some(c => c.status === 'fail' || c.status === 'timeout') ||
       !review || review.status !== 'completed' || review.decision !== 'approve';
     if (run && review) {

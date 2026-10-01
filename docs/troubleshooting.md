@@ -195,9 +195,19 @@ Worktree nikdy automaticky nemaž; [podrobné limity a recovery](repair-loop.md)
 Jde o selhání orchestration invariantu, nikoli úspěšné dokončení. Task zůstává
 `waiting_human` (durable coding) nebo `failed` (general shortcut); Control Plane
 ukazuje důvod v rozhodnutí či chybě runu. Zkontroluj poslední `runs` záznam,
-workerStarted/report, worktree metadata a Git inspekci, verifier checks a completed
+workerStarted/execution success, worktree metadata a Git inspekci, verifier checks a completed
 independent APPROVE review se stejným runId. Starší schválený pokus nestačí.
 Důkazy ručně nedoplňuj jako náhradu za execution. Historické completed rows bez
 metadata nejsou touto aktualizací zpětně certifikované. Před resume prohlédni
 uchovanou práci a ověř ukončení provider procesů; automatický replay se neprovádí.
 Coding bez repository oprav novým explicitním zadáním s repository kontextem.
+
+## Verifier: tsx `listen EINVAL`
+
+`tsx` 4.23.15 sestavuje IPC cestu z `os.tmpdir()` jako
+`tsx-<euid>/<pid>.pipe`. Na macOS má `sockaddr_un.sun_path` 104 bajtů; dlouhý
+worktree/TMPDIR může selhat ještě před assertions. Verifier proto používá
+vlastní krátký temp adresář, nikoli cestu pod worktree. `listen EPERM` značí
+omezení sandboxu: instalovaný Codex launcher musí podporovat
+`--allow-unix-socket`, omezený na vlastní runtime. Síť se tím nepovoluje.
+Ověření bez inference: `npm run verifier:unit`. Tests se nepřeskakují.

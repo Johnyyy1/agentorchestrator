@@ -285,3 +285,8 @@ výsledky původního milestone jsou v [reportu](control-plane-report.md).
   inspekcí záznamů, ne slepým opakováním.
 - Remote access, více uživatelů, notifikace, schedules, semantic memory,
   embeddings, autonomous next-task generation a GitHub nejsou součást V1.
+
+Chybějící worker summary samo není completion invariant ani historická
+evidence warning. Pokud poslední coding execution, workspace/Git, verifier
+a nezávislé APPROVE odpovídají, Final Result zobrazí metadata a text
+„No final worker summary was captured.“ bez dalšího model callu.

@@ -51,6 +51,7 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | db:migrate | Aplikuje migrace do nakonfigurované DB |
 | db:test | Dočasný task insert/read/delete ve skutečné DB |
 | queue:test | DB, unikátní queue, fake executor; i restart/přerušení |
+| verifier:unit | Skutečný tsx IPC v dlouhém worktree a verifier OS sandbox; bez DB/AI |
 | worktree:test | DB, Git, Codex OS sandbox; fake AI executor a CLI parser test |
 | worker | Consumer hlavní queue; může spouštět skutečné providery |
 | codex:test | Skutečný Codex, může čerpat kvótu |
@@ -148,7 +149,7 @@ failed checks a současnou human question.
 
 Sémantické regrese zahrnují přesný `utility + local-coding + repository` Chief
 výstup, strong-coding/planning konflikt, research/planning bez mutation a coding
-bez repository. Completion pure testy odmítají chybějící verifier/workspace/report,
+bez repository. Completion pure testy odmítají chybějící verifier/workspace/worker success,
 neshodné attempt/review a neindependentního reviewera. `orchestration:test` navíc
 ověřuje normalizaci historické DB row do OpenCode pipeline, chybějící verifier,
 workspace či review → waiting_human, a zablokování general completion shortcutu.
@@ -156,3 +157,10 @@ workspace či review → waiting_human, a zablokování general completion short
 Control Plane outcome regrese pokrývá i historický utility/local-coding task
 s repository, který omylem dokončil general worker; ukáže explicitní varování
 bez fabricace worker reportu či přepisování historie.
+
+Socket regresi spusť samostatně `npm run verifier:unit`. Vytváří skutečný
+Git worktree s dlouhou cestou a přes produkční verifier spouští instalovaný
+`tsx`. Ověří existující AF_UNIX socket pod krátkým TMPDIR, nezměněný cwd,
+zákaz zápisu do source i mimo vlastní runtime a odstranění runtime po běhu.
+Jde o integraci OS launcheru, nespouští se v sandboxovaném `npm test` uvnitř
+verifieru (tam by vznikl další vnořený OS sandbox/runtime).

@@ -21,7 +21,7 @@ test("successful final coding attempt with verifier PASS and independent APPROVE
 test("repository coding cannot complete with missing/failed verifier, worker, workspace or inspection evidence", () => {
   for (const patch of [{ verification: undefined }, { verification: { ...result.verification!, success: false } },
     { verification: { ...result.verification!, checks: [] } }, { workspace: undefined }, { git: undefined },
-    { workerStarted: false }, { workerResult: { success: true } }, { workerResult: { success: false } }, { route: { worker: "antigravity" as const, reason: "General" } }]) {
+    { workerStarted: false }, { workerResult: { success: false } }, { route: { worker: "antigravity" as const, reason: "General" } }]) {
     assert.throws(() => assertCodingCompletion("task", task, { ...run, result: { ...result, ...patch } }, review), /Execution incomplete/);
   }
   assert.throws(() => assertCodingCompletion("task", task, { ...run, workspace: null }, review), /Execution incomplete/);
@@ -34,4 +34,9 @@ test("verifier PASS cannot complete without matching independent final approval"
     assert.throws(() => assertCodingCompletion("task", task, run, { ...review, ...patch }), /Execution incomplete/);
   }
   assert.throws(() => assertCodingCompletion("task", task, { ...run, workspace: { ...workspace, baseCommit: "other" } }, review), /Execution incomplete/);
+});
+
+test("verified coding may complete without a worker summary", () => {
+  for (const message of [undefined, null, ""]) assert.doesNotThrow(() =>
+    assertCodingCompletion("task", task, { ...run, result: { ...result, workerResult: { success: true, message } } }, review));
 });

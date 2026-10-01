@@ -210,7 +210,7 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
           workerCalls++;
           workspaces.set(workerOptions.workspace.taskId, workerOptions.workspace);
           await mkdir(join(path, "docs")); await writeFile(join(path, "docs/smoke.md"), "Created by smoke test.\n");
-          return { success: true, exitCode: 0, message: "Created docs/smoke.md", stderr: "", sessionId: "fixture",
+          return { success: true, exitCode: 0, message: null, stderr: "", sessionId: "fixture",
             model: "ollama/fixture-qwen", usage: null, durationMs: 1, timedOut: false, error: null };
         }, codexExecutor: async () => { throw new Error("Semantic regression must use OpenCode"); },
       }) });
@@ -223,6 +223,7 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
       assert.equal(saved.reviews[0]?.reviewer, "antigravity"); assert.equal(workerCalls, 1);
       const output = saved.runs[0]!.result as import("../workers/execute.js").ExecutionResult;
       assert.deepEqual(output.git?.changedFiles, ["docs/smoke.md"]);
+      assert.equal((output.workerResult as { message: unknown }).message, null);
       assert.equal(await readFile(join(saved.runs[0]!.workspace!.path, "docs/smoke.md"), "utf8"), "Created by smoke test.\n");
     });
     await t.test("successful claims missing verifier, workspace or final review never complete", async () => {

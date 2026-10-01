@@ -184,7 +184,9 @@ nevolá AI ani cloud. Pro dobrovolný test se skutečným lokálním modelem slo
 | `LOCAL_CODING_MAX_DIFFICULTY` | `2` | 1–3; eligibility limit lokálního coding |
 
 Přihlašovací údaje CLI spravují samotná CLI mimo `.env` tohoto projektu.
-`PATH` musí obsahovat potřebné binárky pro worker i verifier.
+`PATH` musí obsahovat potřebné binárky pro worker i verifier. Codex sandbox
+launcher pro verifier musí podporovat `--allow-unix-socket` (ověř
+`codex sandbox --help`); výjimka je omezena na krátký vlastní runtime.
 
 ## Spuštění, zastavení a aktualizace
 

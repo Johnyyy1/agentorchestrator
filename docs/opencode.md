@@ -72,7 +72,7 @@ nenahrazuje ověření konkrétní instalace.
 
 Manager vytvoří jediný worktree a callback uloží `runs.workspace` před workerem.
 Pak proběhne capability policy a uložení skutečného selected workeru. Codex i
-OpenCode pokračují stejným `executeTask()` pipeline: worker → nezměněný
+OpenCode pokračují stejným `executeTask()` pipeline: worker →
 `verifyWorktree()` → `inspectTaskWorktree()` → durable orchestrace a queue persistence.
 Completion tasku vyžaduje worker success, verifier success **i nezávislé approve**. Všechny dostupné
 test/typecheck/lint/build skripty mají stejný standard pro oba workery.
@@ -110,10 +110,17 @@ Migrace `0002_absurd_madame_masque.sql` přidává nullable JSON `tasks.chief`
 `runs.result` uchovává worker result, routing, workspace, verification a Git diff
 metadata. OpenCode result obsahuje success, exitCode, public message, sessionId,
 explicit model, whitelisted token counts, durationMs, bounded stderr a error.
-JSON parser vyžaduje exit 0, veřejný text a konečný `step_finish.reason = stop`;
+Při chybějící veřejné zprávě navíc `eventTypes` (nejvýše 16 typů, délka typu
+64 znaků), bez raw streamu nebo thinking. Parser má limity 2 MiB stream,
+4096 řádků, 256 kB/event a 64 kB zpráva. Veřejný text bere pouze z
+`type=text` a `part.text` s `part.type=text` (nebo legacy bez part.type).
+`step_start` zahájí novou závěrečnou zprávu; reasoning ani tool payload se
+nepoužijí jako náhrada. Explicitní error/incomplete a neúplný step selžou.
+JSON parser vyžaduje exit 0, netimeoutovaný úspěšný proces a konečný
+`step_finish.part.reason = stop`; veřejná `message` může být null.
 malformed, error nebo neúplný stream selže. Reasoning/tool input/output events
-se nepersistují. Text fallback vyžaduje exit 0, netimeoutovaný proces a neprázdný
-výstup do 64 kB; sessionId a usage jsou null. Thinking se nevyžaduje. Fallback
+se nepersistují. Text fallback vyžaduje exit 0, netimeoutovaný úspěšný proces a
+výstup do 64 kB; prázdná zpráva je null; sessionId a usage jsou null. Thinking se nevyžaduje. Fallback
 se volí před invocation, nikoli po chybě JSON parseru. Verifier je pro oba formáty
 stejně povinný. Cloud model ID je null,
 pokud ho původní CLI path nehlásí a používá default; žádný ID se nevymýšlí.
@@ -176,3 +183,10 @@ Coding prompt žádá na konci operátorský report `Summary`, `What changed`,
 skutečná veřejná zpráva; exact Markdown se neparsuje pro completion. Control
 Plane ji zobrazí vedle nezávislých checks/review bez další inference. Routing,
 OpenCode setup a `LOCAL_CODING_*`/`OPENCODE_BIN` defaults se tím nemění.
+
+Worker execution success vyjadřuje dokončený proces a validní terminální
+CLI stav. Task completion navíc vyžaduje Git/workspace evidence, verifier
+a nezávislé approve. Chybějící veřejný report tuto evidence nenahrazuje
+ani neznehodnocuje; Control Plane zachová „No final worker summary was captured.“
+Bez nové inference a bez vymyšlené zprávy. LOCAL_CODING_* a OPENCODE_BIN,
+routing tabulka i attempt/skip policy zůstávají stejné.

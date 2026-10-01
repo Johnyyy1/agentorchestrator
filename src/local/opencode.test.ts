@@ -16,7 +16,7 @@ const events = [
   { type: "step_start", sessionID: "ses_fixture", part: { type: "step-start" } },
   { type: "reasoning", part: { text: "PRIVATE TRACE" } },
   { type: "tool_use", part: { state: { input: "SECRET TOOL INPUT" } } },
-  { type: "text", sessionID: "ses_fixture", part: { text: "Function updated." } },
+  { type: "text", sessionID: "ses_fixture", part: { type: "text", text: "Function updated." } },
   { type: "step_finish", part: { reason: "stop", tokens: { input: 10, output: 5, reasoning: 2 } } },
 ].map(event => JSON.stringify(event)).join("\n");
 
@@ -33,6 +33,32 @@ test("JSONL parser preserves public result/totals and rejects incomplete/error/m
   assert.equal(parseOpenCodeOutput(events, 0, "fixture", 1, "", true, true).success, false);
 });
 
+test("valid terminal execution needs no public report; reasoning never substitutes for one", () => {
+  const withoutText = events.split("\n").filter(line => JSON.parse(line).type !== "text").join("\n");
+  const parsed = parseOpenCodeOutput(withoutText, 0, "fixture", 1);
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.message, null);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.sessionId, "ses_fixture");
+  assert.deepEqual(parsed.usage, { inputTokens: 10, outputTokens: 5, reasoningTokens: 2 });
+  assert.equal(parsed.eventTypes?.reasoning, 1);
+  assert.ok(!JSON.stringify(parsed).includes("PRIVATE TRACE"));
+  assert.equal(parseOpenCodeText("", 0, "fixture", 1).success, true);
+  assert.equal(parseOpenCodeText("", 0, "fixture", 1).message, null);
+});
+test("parser bounds streams and rejects explicit incomplete state, later starts and failed exits", () => {
+  for (const output of [events + '\n{"type":"incomplete"}', events + '\n{"type":"step_start"}',
+    events + '\n{"type":"step_finish","part":{"reason":"length"}}', 'x'.repeat(2 * 1024 * 1024 + 1),
+    '\n'.repeat(4097), JSON.stringify({ type: "reasoning", part: { text: 'x'.repeat(256000) } })]) {
+    assert.equal(parseOpenCodeOutput(output, 0, "fixture", 1).success, false);
+  }
+  assert.equal(parseOpenCodeOutput(events, 1, "fixture", 1).success, false);
+  assert.equal(parseOpenCodeOutput(events, 0, "fixture", 1, "", false, true).success, false);
+  const unrelated = parseOpenCodeOutput(events + '\n{"type":"unrelated"}', 0, "fixture", 1);
+  assert.equal(unrelated.success, true);
+  assert.equal(unrelated.message, "Function updated.");
+});
+
 test("capability detection and bounded text fallback fail safely", () => {
   assert.deepEqual(detectOpenCodeInterface(" -m, --model VALUE\n --agent AGENT\n --format [choices: default, json]"),
     { outputFormat: "json", agentFlag: true, titleFlag: false });
@@ -44,7 +70,7 @@ test("capability detection and bounded text fallback fail safely", () => {
   assert.equal(containsOpenCodeConfig({ ...config, enabled_providers: ["ollama", "cloud"] }, config), false);
   assert.equal(containsOpenCodeConfig({ ...config, mcp: { unexpected: { command: ["sh"] } } }, config), false);
   assert.equal(parseOpenCodeText("LOCAL_OPENCODE_OK", 0, "fixture", 1).success, true);
-  for (const text of ["", "x".repeat(64001)]) assert.equal(parseOpenCodeText(text, 0, "fixture", 1).success, false);
+  for (const text of ["x".repeat(64001)]) assert.equal(parseOpenCodeText(text, 0, "fixture", 1).success, false);
   assert.equal(parseOpenCodeText("partial", 1, "fixture", 1).success, false);
   assert.equal(parseOpenCodeText("partial", 0, "fixture", 1, "", true, true).success, false);
 });

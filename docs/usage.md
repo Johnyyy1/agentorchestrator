@@ -233,9 +233,10 @@ trvání, timeout/skips), git.statusShort, changedFiles, diffStat, dirty,
 truncated a případné error. `runs.routing` a `result.routing` obsahují
 requestedCapability, selectedWorker, fallbackReason, model a reason.
 Completion repository tasku v DB transakci vyžaduje poslední úspěšný coding pokus,
-workerStarted a neprázdný worker report, shodná uložená worktree metadata,
+workerStarted a worker execution success (veřejný report je volitelný), shodná uložená worktree metadata,
 Git inspekci se changedFiles, dostupný validní worktree, úspěšný verifier se
-všemi objevenými checks a nezávislé review approve pro právě tento run. Run completed značí pouze úspěšný pokus. Výpisy jsou omezené; diff stat neobsahuje untracked obsah.
+všemi objevenými checks a nezávislé review approve pro právě tento run. Run completed značí pouze úspěšný pokus. Chybějící veřejný worker report
+se zobrazí jako „No final worker summary was captured.“; completion neblokuje. Výpisy jsou omezené; diff stat neobsahuje untracked obsah.
 
 Worktree zůstává po úspěchu i failure. Inspectuj ho:
 

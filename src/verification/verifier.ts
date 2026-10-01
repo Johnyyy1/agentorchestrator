@@ -1,9 +1,10 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { execa } from "execa";
 import { assertTaskWorktree } from "../git/worktree.js";
 import type { TaskWorktree } from "../git/worktree.js";
+import { createVerifierRuntime } from "./runtime.js";
 import { workspaceSandboxArgs } from "../workers/codex.js";
 
 export type VerificationCheck = {
@@ -69,8 +70,9 @@ export async function verifyWorktree(workspace: TaskWorktree, options: {
   else if (await exists(join(workspace.path, "yarn.lock"))) packageManager = "yarn";
 
   const checks: VerificationCheck[] = [];
-  // Disposable HOME/cache/tmp all stay inside the worktree. No host secrets are inherited.
-  const runtime = await mkdtemp(join(workspace.path, ".jonas-os-verify-"));
+  // Private short HOME/cache/tmp for this verifier only. No host secrets are inherited.
+  const ownedRuntime = await createVerifierRuntime();
+  const runtime = ownedRuntime.path;
   try {
     for (const name of checkNames) {
       if (typeof manifest.scripts?.[name] !== "string") {
@@ -85,6 +87,8 @@ export async function verifyWorktree(workspace: TaskWorktree, options: {
         const child = execa("codex", [
           "sandbox", "-c", 'sandbox_mode="workspace-write"',
           ...workspaceSandboxArgs,
+          "-c", `sandbox_workspace_write.writable_roots=${JSON.stringify([runtime])}`,
+          "--allow-unix-socket", runtime,
           "--", packageManager, ...args,
         ], {
           cwd: workspace.path,
@@ -143,7 +147,7 @@ export async function verifyWorktree(workspace: TaskWorktree, options: {
     }
   } finally {
     // Only this freshly generated temporary directory is removed; the worktree is preserved.
-    await rm(runtime, { recursive: true, force: true });
+    await ownedRuntime.cleanup();
   }
   return { success: checks.every(check => check.success), packageManager, checks };
 }
