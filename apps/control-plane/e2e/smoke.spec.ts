@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { resolve } from 'node:path';
+import { basename, join } from 'node:path';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { execa } from 'execa';
 const taskId = '10000000-0000-4000-8000-000000000003';
 const decisionId = '10000000-0000-4000-8000-000000000501';
 const screenshot = (name: string) => resolve('docs/control-plane', name);
@@ -28,6 +32,12 @@ test('operator workflow, local security and visual layouts', async ({ page, requ
   await expect(page.getByRole('link', { name: 'Export analytics as a CSV file' })).not.toBeVisible();
   await page.getByRole('link', { name: 'Correct dividend currency conversion' }).click();
   await expect(page.getByRole('heading', { name: 'Lifecycle' })).toBeVisible();
+  const outcome = page.getByRole('region', { name: 'FINAL RESULT' });
+  await expect(outcome).toBeVisible();
+  await expect(outcome.getByText('✓ Approved by Antigravity', { exact: true })).toBeVisible();
+  await expect(outcome.getByText('3 files', { exact: true })).toBeVisible();
+  await expect(outcome.getByText('— lint · skipped', { exact: true })).toBeVisible();
+  expect(await outcome.evaluate(el => el.getBoundingClientRect().top)).toBeLessThan(await page.locator('.task-introduction').evaluate(el => el.getBoundingClientRect().top));
   await expect(page.getByText('Deterministic verification', { exact: true })).toHaveCount(2);
   await expect(page.getByText('APPROVE', { exact: true })).toBeVisible();
   await page.screenshot({ path: screenshot('task-detail-desktop.png'), fullPage: true });
@@ -37,6 +47,12 @@ test('operator workflow, local security and visual layouts', async ({ page, requ
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: screenshot('task-detail-mobile.png'), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/tasks/10000000-0000-4000-8000-000000000004');
+  await expect(page.getByRole('region', { name: 'WAITING FOR YOU' })).toContainText('Should account recovery require a verified second factor?');
+  await expect(page.getByRole('region', { name: 'WAITING FOR YOU' }).getByRole('link', { name: 'Answer & resume' })).toBeVisible();
+  await page.goto('/tasks/10000000-0000-4000-8000-000000000005');
+  await expect(page.getByRole('region', { name: 'FAILED' })).toContainText('Deterministic verification failed.');
+  await expect(page.getByRole('region', { name: 'FAILED' })).toContainText('✕ test · fail');
   await page.goto('/decisions');
   await expect(page.getByRole('heading', { name: 'Decisions', exact: true })).toBeVisible();
   await page.screenshot({ path: screenshot('decisions-desktop.png'), fullPage: true });
@@ -68,7 +84,7 @@ test('operator workflow, local security and visual layouts', async ({ page, requ
   await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
   await page.goto('/');
   await page.getByLabel('What should Jonas OS do?').fill('Build a bounded fixture export');
-  await page.getByLabel('Repository context').selectOption({ label: 'investi' });
+  await page.getByLabel('Repository context').selectOption({ label: 'investi · /development/fixtures/investi' });
   await page.getByRole('button', { name: 'Delegate', exact: true }).click();
   await expect(page.getByText('Task queued · Build a bounded fixture export')).toBeVisible();
   await page.getByRole('link', { name: 'Inspect task', exact: true }).click();
@@ -86,4 +102,42 @@ test('operator workflow, local security and visual layouts', async ({ page, requ
   expect(rebinding.status()).toBe(403);
   await page.goto(`/tasks/${taskId}`);
   expect(errors).toEqual([]);
+});
+
+test('first repository registration and fake-Chief delegation preserve validated context without inference', async ({ page, request }) => {
+  const directory = await mkdtemp(join(tmpdir(), 'control-plane-browser-'));
+  try {
+    await execa('git', ['init', '-b', 'main', directory]);
+    const path = await realpath(directory), name = basename(path);
+    await page.goto('/');
+    await page.getByRole('button', { name: '+ Add repository', exact: true }).click();
+    await page.getByLabel('Repository path').fill(path);
+    await page.getByRole('button', { name: 'Add repository', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: `Registered ${name}` })).toBeVisible();
+    const key = await page.getByLabel('Repository context').inputValue();
+    expect(key).toMatch(/^[a-f0-9]{24}$/);
+    await expect(page.locator('.repository-context-path')).toHaveText(path);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/projects');
+    const row = page.getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) });
+    await expect(row).toContainText('No tasks');
+    await expect(row.getByRole('cell').nth(1)).toHaveText('0');
+    await page.goto('/');
+    await page.getByLabel('Repository context').selectOption(key);
+    await page.getByLabel('What should Jonas OS do?').fill('First repository fixture task');
+    await page.getByRole('button', { name: 'Delegate', exact: true }).click();
+    await page.getByRole('link', { name: 'Inspect task', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'First repository fixture task' })).toBeVisible();
+    await expect(page.locator('.task-facts')).toContainText(path);
+    const arbitrary = await request.post('/api/commands/delegate', { headers: { Origin: 'http://127.0.0.1:3107', 'X-Request-ID': crypto.randomUUID() }, data: { goal: 'Never execute', repository: { path } } });
+    expect(arbitrary.status()).toBe(400);
+    const duplicate = await request.post('/api/commands/repository', { headers: { Origin: 'http://127.0.0.1:3107', 'X-Request-ID': crypto.randomUUID() }, data: { path: `${path}/` } });
+    expect(duplicate.status()).toBe(409);
+    const nonGit = await request.post('/api/commands/repository', { headers: { Origin: 'http://127.0.0.1:3107', 'X-Request-ID': crypto.randomUUID() }, data: { path: tmpdir() } });
+    expect(nonGit.status()).toBe(400);
+    const crossSite = await request.post('/api/commands/repository', { headers: { Origin: 'https://evil.example', 'X-Request-ID': crypto.randomUUID() }, data: { path } });
+    expect(crossSite.status()).toBe(403);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

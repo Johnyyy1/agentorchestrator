@@ -1,4 +1,7 @@
 // Explicit development-only, in-memory fixtures. Never writes to PostgreSQL or starts a worker.
+import { validateRepositoryPath } from './repositories.js';
+import { registeredRepositorySchema, registerRepositoryInputSchema } from './contracts.js';
+import { RequestError } from './security.js';
 import { randomUUID } from 'node:crypto';
 import type { tasks, runs, reviews, escalations, orchestrationEvents } from '../db/schema.js';
 import { buildTimeline, mapActivity, mapEscalation, mapReview, mapRun, mapTask, overviewCounts, repositoryIdentity } from './mapping.js';
@@ -32,6 +35,7 @@ export function createFixtureStore() {
     chief: { capability: capability as 'local-coding', workerBrief: 'Explicit development fixture.' },
     queueName: 'control-plane.fixture.only', orchestration: null, createdAt: at(120 - index * 10), updatedAt: at(index === 0 ? 0 : index * 3),
   }));
+  const registry = new Map([...new Set(taskRows.map(t => t.repository!.path))].map(path => [path, randomUUID()]));
   const runRows: Array<typeof runs.$inferSelect> = [];
   function run(task: number, attempt: number, worker: string, status: string, minutes: number, failed = false) {
     const row = taskRows[task - 1]!;
@@ -47,7 +51,7 @@ export function createFixtureStore() {
       workspace: { taskId: row.id, repositoryPath: row.repository!.path, path: `/development/fixtures/worktrees/${row.id}`, branch: `jonas-os/task-${row.id}`, baseBranch: 'main', baseCommit: 'b819f3a8f2c061154a134455e9c0fa00920d7901' },
       routing: { requestedCapability: attempt === 1 ? 'local-coding' : 'strong-coding', selectedWorker: worker as 'opencode', model: worker === 'opencode' ? 'ollama/qwen3.5:9b-q4_K_M' : null,
         fallbackReason: null, reason: attempt === 1 ? 'Eligible local coding recommendation.' : 'Chief requested strong-coding repair.' },
-      result: finishedAt ? { workerResult: { message: failed ? 'Implemented the conversion; one regression remains in historical rate lookup.' : 'Updated settlement currency conversion and regression coverage. The public API remains compatible.' },
+      result: finishedAt ? { workerResult: { success: !failed, message: failed ? 'Implemented the conversion; one regression remains in historical rate lookup.' : 'Summary\nUpdated settlement currency conversion.\n\nWhat changed\n- Used settlement currency for dividend totals.\n- Added regression coverage and currency documentation.\n\nFiles changed\n3 files.\n\nNotes / limitations\nThe public API remains compatible.' },
         verification: { checks: ['test', 'typecheck', 'lint', 'build'].map(check) },
         git: { changedFiles: ['src/portfolio/dividends.ts', 'src/portfolio/dividends.test.ts', 'docs/currency.md'],
           statusShort: ' M src/portfolio/dividends.ts\n M src/portfolio/dividends.test.ts\n M docs/currency.md',
@@ -85,12 +89,12 @@ export function createFixtureStore() {
   const item = (t: typeof tasks.$inferSelect) => mapTask(summary(t), runRows.filter(r => r.taskId === t.id).sort((a, b) => b.attempt - a.attempt)[0]);
   const decisions = () => escalationRows.map(e => mapEscalation(e, summary(taskRows.find(t => t.id === e.taskId)!)));
   const activity = () => eventRows.map(e => mapActivity(e, taskRows.find(t => t.id === e.taskId)!.title)).sort((a, b) => b.at.localeCompare(a.at));
-  const projects = (): ProjectDto[] => [...new Set(taskRows.map(t => t.repository!.path))].map(path => {
+  const projects = (): ProjectDto[] => [...new Set([...registry.keys(), ...taskRows.flatMap(t => t.repository ? [t.repository.path] : [])])].map(path => {
     const ts = taskRows.filter(t => t.repository?.path === path), latest = ts.slice().sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]!;
-    return { ...repositoryIdentity(path), running: ts.filter(t => ['running', 'repairing', 'reviewing'].includes(t.status)).length,
+    return { ...repositoryIdentity(path), registered: registry.has(path), available: registry.has(path), unavailableReason: null, running: ts.filter(t => ['running', 'repairing', 'reviewing'].includes(t.status)).length,
       queued: ts.filter(t => t.status === 'queued').length, waiting: ts.filter(t => t.status === 'waiting_human').length,
       failed: ts.filter(t => t.status === 'failed').length, completed: ts.filter(t => t.status === 'completed').length,
-      total: ts.length, updatedAt: latest.updatedAt.toISOString(), latestStatus: latest.status };
+      total: ts.length, updatedAt: latest?.updatedAt.toISOString() ?? new Date(now).toISOString(), latestStatus: latest?.status ?? 'No tasks' };
   });
   const list = (query: TaskQuery) => {
     let items = taskRows.map(item).filter(t => (!query.status || (query.status === 'active' ? ['running', 'repairing', 'reviewing'].includes(t.status) : query.status === 'attention' ? ['failed', 'pending'].includes(t.status) : t.status === query.status)) && (!query.category || t.category === query.category)
@@ -100,7 +104,7 @@ export function createFixtureStore() {
     return taskListSchema.parse({ items: items.slice((query.page - 1) * 30, query.page * 30), total: items.length, page: query.page, pageSize: 30 });
   };
   const services: MutationServices = {
-    repository: async key => { const p = projects().find(p => p.key === key); return p ? { name: p.name, repositoryPath: p.path, baseBranch: 'main' } : null; },
+    repository: async key => { const p = projects().find(p => p.key === key && p.registered && p.available); return p ? { name: p.name, repositoryPath: p.path, baseBranch: 'main' } : null; },
     plan: async input => /clarif/i.test(input.userGoal) ? { action: 'ask_human', summary: 'Development fixture', reason: 'More context is needed.', humanQuestion: 'Which behavior should remain compatible?' }
       : /no action/i.test(input.userGoal) ? { action: 'no_action', summary: 'Development fixture', reason: 'No change is needed for this fixture goal.' }
       : { action: 'create_task', summary: 'Development fixture · queued without execution.', reason: 'Explicit fixture goal.', capability: 'local-coding', workerBrief: 'Development fixture; never execute.',
@@ -125,6 +129,12 @@ export function createFixtureStore() {
     },
   };
   return { services, projects, list, decisions, activity,
+    registerRepository: async (value: unknown) => {
+      const input = registerRepositoryInputSchema.parse(value), path = await validateRepositoryPath(input.path);
+      if (registry.has(path)) throw new RequestError(409, 'Repository is already registered.');
+      const id = randomUUID(); registry.set(path, id);
+      return registeredRepositorySchema.parse({ id, ...repositoryIdentity(path) });
+    },
     overview: () => overviewSchema.parse({ counts: overviewCounts([...new Set(taskRows.map(t => t.status))].map(status => ({ status, count: taskRows.filter(t => t.status === status).length }))),
       active: taskRows.filter(t => ['running', 'repairing', 'reviewing'].includes(t.status)).map(item), queued: taskRows.filter(t => t.status === 'queued').map(item),
       failures: taskRows.filter(t => t.status === 'failed').map(item), decisions: decisions().filter(e => e.status === 'open'), activity: activity() }),

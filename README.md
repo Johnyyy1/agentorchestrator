@@ -159,3 +159,8 @@ Příklad: pokus 1 → test failure → Chief repair → pokus 2 ve stejném wor
 vrátí existující task do fronty; Chief ji interpretuje před dalším workerem.
 Cap se odpovědí neobnovuje. [Podrobnosti a omezení](docs/repair-loop.md),
 [report implementace a ověření](docs/repair-loop-report.md).
+
+Control Plane obsahuje [Repository Registry V1](docs/control-plane.md#první-repozitář)
+pro první Git checkout bez historických úkolů a
+[Final Result](docs/control-plane.md#výsledek-úkolu) s veřejným worker reportem,
+verification a nezávislým review. Po aktualizaci spusť `npm run db:migrate`.

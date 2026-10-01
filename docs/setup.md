@@ -167,6 +167,7 @@ nevolá AI ani cloud. Pro dobrovolný test se skutečným lokálním modelem slo
 
 | Proměnná | Default | Význam / omezení |
 | --- | --- | --- |
+| `JONAS_OS_REPOSITORIES` | Nenastaveno | Volitelný Control Plane bootstrap: absolutní Git cesta nebo JSON pole (max. 100); validace při čtení, bez skenování |
 | `DATABASE_URL` | Žádný v kódu; ukázka v `.env.example` | Povinná pro DB, migrace, frontu a worker |
 | `AGY_FLASH_MODEL` | CLI default | Model běžných non-coding úkolů |
 | `AGY_PRO_MODEL` | CLI default | Model non-coding s difficulty >=4 nebo risk high |
@@ -267,3 +268,13 @@ Lokální produkční režim: `npm run control-plane:build`, potom
 služby. V production je hodnota 1 odmítnutá. Pro běžné používání ji neaktivuj.
 Zbytek provider konfigurace včetně LOCAL_CODING_*/OPENCODE_BIN zůstává beze změn.
 [Routes, používání, bezpečnost a limity](control-plane.md).
+
+### Repository Registry V1
+
+Po aktualizaci aplikuj `npm run db:migrate` (nová tabulka `repositories`).
+První cestu přidej přes **+ Add repository** v Overview/Projects nebo nastav
+`JONAS_OS_REPOSITORIES` v root `.env`. Například jedna absolutní Git cesta či
+`["/absolute/path/to/first","/absolute/path/to/second"]`. Hodnotu můžeš získat
+příkazem `pwd -P` spuštěným v kořeni cílového checkoutu. Restartuj web po změně
+`.env`. Server registraci zajistí idempotentně při čtení; neplatné cesty
+nepřidává. [Validace a použití](control-plane.md#první-repozitář).

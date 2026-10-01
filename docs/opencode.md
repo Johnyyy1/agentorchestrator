@@ -167,3 +167,9 @@ review request_changes řeší samostatný Chief repair schema/prompt. Přechod
 OpenCode → Codex je záměrný až v novém bounded pokusu a nikdy v originálním
 checkoutu. Nejasný crash, vyčerpaný cap a humanQuestion vedou na waiting_human.
 [CLI, history, restart, quota a limity](repair-loop.md).
+
+Coding prompt žádá na konci operátorský report `Summary`, `What changed`,
+`Files changed`, `Notes / limitations`, včetně repair attempts. Persistuje se
+skutečná veřejná zpráva; exact Markdown se neparsuje pro completion. Control
+Plane ji zobrazí vedle nezávislých checks/review bez další inference. Routing,
+OpenCode setup a `LOCAL_CODING_*`/`OPENCODE_BIN` defaults se tím nemění.

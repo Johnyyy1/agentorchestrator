@@ -136,3 +136,12 @@ export const orchestrationEvents = pgTable("orchestration_events", {
   kind: text("kind").notNull(), data: jsonb("data").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, table => [index("orchestration_events_task").on(table.taskId, table.createdAt)]);
+
+// Minimal repository registry; no project planning or semantic memory.
+export const repositories = pgTable("repositories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  path: text("path").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("repositories_path_unique").on(table.path)]);

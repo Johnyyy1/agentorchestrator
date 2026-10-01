@@ -49,9 +49,12 @@ export function mapRun(row: typeof runs.$inferSelect): RunDto {
     capability: optionalText(route.requestedCapability, 100), selectedWorker: optionalText(route.selectedWorker, 100),
     model: optionalText(route.model, 200), fallbackReason: optionalText(route.fallbackReason), routeReason: optionalText(route.reason),
     failureKind: optionalText(row.failureKind, 200), parentRunId: row.parentRunId, startedAt: iso(row.startedAt), finishedAt: row.finishedAt ? iso(row.finishedAt) : null,
+    workerSucceeded: typeof worker.success === 'boolean' ? worker.success : null,
     error: optionalText(row.error ?? result.error), message: safeText(worker.message, 8000), messageTruncated: worker.messageTruncated === true || (typeof worker.message === 'string' && worker.message.length > 8000),
     workspace: workspace ? { path: safeText(workspace.path, 1000), branch: safeText(workspace.branch, 300), baseBranch: safeText(workspace.baseBranch, 300), baseCommit: safeText(workspace.baseCommit, 100) } : null,
     git: result.git ? { changedFiles: list(git.changedFiles).slice(0, 100).map(p => safeText(p, 500)),
+      countIsLowerBound: typeof git.countIsLowerBound === 'boolean' ? git.countIsLowerBound : git.truncated === true,
+      changedFileCount: typeof git.changedFileCount === 'number' ? git.changedFileCount : list(git.changedFiles).length,
       statusShort: safeText(git.statusShort, 8000), diffStat: safeText(git.diffStat, 8000), truncated: git.truncated === true || list(git.changedFiles).length > 100 } : null,
     checks: list(verification.checks).slice(0, 20).map(value => {
       const c = record(value), output = `${safeText(c.stdout, 8000)}${c.stderr ? `\n${safeText(c.stderr, 8000)}` : ''}`.trim();

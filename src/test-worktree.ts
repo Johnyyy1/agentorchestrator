@@ -75,6 +75,7 @@ async function persistedRun(id: string) {
 const workerCalls: string[] = [];
 const fakeCodex: typeof runCodex = async (prompt, cwd, options = {}) => {
   workerCalls.push("codex");
+  for (const section of ["Summary", "What changed", "Files changed", "Notes / limitations"]) assert.ok(prompt.includes(section));
   if (options.mode !== "workspace-write") throw new Error("Repository coding must explicitly request workspace-write.");
   assert.notEqual(cwd, repositoryPath);
   assert.equal(cwd, options.workspace.path);
@@ -91,6 +92,7 @@ const fakeCodex: typeof runCodex = async (prompt, cwd, options = {}) => {
 
 const fakeOpenCode: typeof runOpenCode = async (prompt, cwd, options) => {
   workerCalls.push("opencode");
+  for (const section of ["Summary", "What changed", "Files changed", "Notes / limitations"]) assert.ok(prompt.includes(section));
   assert.equal(cwd, options.workspace.path);
   const [run] = await db.select().from(runs).where(eq(runs.taskId, options.workspace.taskId));
   assert.equal(run?.worker, "opencode");

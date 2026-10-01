@@ -1,6 +1,14 @@
 import { z } from 'zod';
 export class RequestError extends Error {
+  readonly name = 'ControlPlaneRequestError';
   constructor(public status: number, message: string) { super(message); }
+}
+export function isRequestError(error: unknown): error is RequestError {
+  // Next server-component and route bundles can share fixture closures through globalThis
+  // while loading separate class instances. Preserve the code-owned HTTP error across them.
+  return error instanceof Error && error.name === 'ControlPlaneRequestError'
+    && 'status' in error && typeof error.status === 'number' && Number.isInteger(error.status)
+    && error.status >= 400 && error.status <= 599;
 }
 export function validateLocalRequest(request: Request, mutation = false): void {
   const host = request.headers.get('host');
@@ -32,12 +40,13 @@ export async function readJson(request: Request): Promise<unknown> {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 export function publicError(error: unknown, operation: string): { status: number; error: string } {
-  if (error instanceof RequestError) return { status: error.status, error: error.message };
+  if (isRequestError(error)) return { status: error.status, error: error.message };
   if (error instanceof z.ZodError) return { status: 400, error: 'Check the submitted fields and their length.' };
   const message = error instanceof Error ? error.message : '';
   const known = ['Escalation is not open.', 'Task is not waiting for a human.', 'Only a waiting_human task can be abandoned.',
     'Project is no longer available.', 'Escalation does not exist.', 'Task does not exist.'];
   if (known.includes(message)) return { status: 409, error: message };
+  if (operation === 'repository') return { status: 503, error: 'Repository registration failed. Check database availability and migrations.' };
   if (operation === 'delegate') return { status: 503, error: 'Chief planning or submission failed. Check Ollama, database and queue health. A pending task may have been retained; inspect Tasks before retrying.' };
   return { status: 503, error: 'The operation did not complete. Reload the decision to check its current state. If enqueue failed, the answer remains open.' };
 }

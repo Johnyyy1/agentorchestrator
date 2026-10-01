@@ -134,3 +134,13 @@ CLI verze musí být ověřené zvlášť. [Aktuální report](repair-loop-repor
 v `docs/control-plane/`; fixture banner rozlišuje simulaci od reálné DB.
 Testy nepoužívají cloud ani lokální modelovou inferenci. Production build
 se ověřuje zvlášť od lint/typecheck a fixture browser smoke.
+
+Registry/outcome unit testy jsou součástí `control-plane:test` a `npm test`.
+Používají dočasné Git adresáře a fake Chief; nevolají AI. DB QA ověřuje bootstrap
+s nulovou historií daného repozitáře, canonical duplicates, počty a
+nedostupnost; uklízí jen vlastní records. E2E registruje skutečný dočasný Git
+adresář do fixture paměti a ověřuje cestu až v TaskSpec přes submitDecision.
+Při změně registry spusť i `db:test`, `control-plane:db:test`, web typecheck,
+lint, production build a browser smoke. Migration metadata musí zůstat spolu
+s SQL. Outcome tests pokrývají opravy, legacy/missing report, matching review,
+failed checks a současnou human question.

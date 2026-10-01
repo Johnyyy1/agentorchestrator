@@ -19,6 +19,10 @@ export async function delegate(value: unknown, services: MutationServices) {
   const input = chiefInputSchema.parse({ userGoal: goal, ...(project ? { project } : {}) });
   const decision = validateDecision(await services.plan(input));
   validateGrounding(decision, input);
+  if (projectKey && decision.action === 'create_task') {
+    const current = await services.repository(projectKey);
+    if (!current || current.repositoryPath !== project?.repositoryPath) throw new Error('Project is no longer available.');
+  }
   const submitted = await services.submit(decision);
   if (submitted.action === 'create_task') return delegateResultSchema.parse({ action: submitted.action,
     taskId: submitted.task.id, title: safeText(submitted.task.title, 300), capability: submitted.capability,

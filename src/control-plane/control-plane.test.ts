@@ -103,6 +103,8 @@ test('local host, origin, bounded JSON and safe error boundary', async () => {
   await assert.rejects(readJson(new Request('http://localhost', { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'x'.repeat(32001) })), (error: unknown) => error instanceof RequestError && error.status === 413);
   assert.deepEqual(await readJson(new Request('http://localhost', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"goal":"test"}' })), { goal: 'test' });
   assert.ok(!JSON.stringify(publicError(new Error('password=my-secret stack /auth.json'), 'answer')).includes('my-secret'));
+  const otherBundleError = Object.assign(new Error('Repository is already registered.'), { name: 'ControlPlaneRequestError', status: 409 });
+  assert.deepEqual(publicError(otherBundleError, 'repository'), { status: 409, error: 'Repository is already registered.' });
 });
 test('mutation gate coalesces in-flight retries, preserves failed results and rejects changed bodies', async () => {
   const gate = createMutationGate(), id = randomUUID();

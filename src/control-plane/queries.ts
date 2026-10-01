@@ -5,6 +5,7 @@ import { overviewSchema, taskListSchema, taskDetailSchema, escalationSchema, act
 import type { ProjectDto, TaskQuery } from './contracts.js';
 import { buildTimeline, iso, mapActivity, mapEscalation, mapReview, mapRun, mapTask, overviewCounts, repositoryIdentity, safeText } from './mapping.js';
 import type { TaskSummaryRow } from './mapping.js';
+import { registeredRepositories, repositoryAvailability } from './repositories.js';
 
 // Database imports are lazy: offline UI and production compilation do not need credentials.
 async function database() { return (await import('../db/index.js')).db; }
@@ -65,28 +66,35 @@ export async function getRepositorySummaries(): Promise<ProjectDto[]> {
     .where(sql`${tasks.repository}->>'path' is not null`).groupBy(sql`${tasks.repository}->>'path'`, tasks.status).limit(16001);
   if (rows.length > 16000) throw new Error('Repository inventory exceeds the V1 limit.');
   const groups = new Map<string, ProjectDto>();
+  for (const row of await registeredRepositories()) {
+    const identity = repositoryIdentity(row.path);
+    groups.set(identity.key, { ...identity, name: safeText(row.name, 200), registered: true,
+      ...await repositoryAvailability(row.path), running: 0, queued: 0, waiting: 0, failed: 0, completed: 0, total: 0,
+      updatedAt: iso(row.updatedAt), latestStatus: 'No tasks' });
+  }
   for (const row of rows) {
     const identity = repositoryIdentity(row.path);
-    const group = groups.get(identity.key) ?? { ...identity, path: safeText(identity.path, 1000), running: 0, queued: 0, waiting: 0, failed: 0, completed: 0, total: 0, updatedAt: iso(row.updatedAt), latestStatus: row.status };
+    const group = groups.get(identity.key) ?? { ...identity, path: safeText(identity.path, 4096), registered: false, available: false, unavailableReason: 'Register this historical repository to delegate work.', running: 0, queued: 0, waiting: 0, failed: 0, completed: 0, total: 0, updatedAt: iso(row.updatedAt), latestStatus: row.status };
     group.total += row.count;
     if (['running', 'reviewing', 'repairing'].includes(row.status)) group.running += row.count;
     if (row.status === 'queued') group.queued += row.count;
     if (row.status === 'waiting_human') group.waiting += row.count;
     if (row.status === 'failed') group.failed += row.count;
     if (row.status === 'completed') group.completed += row.count;
-    if (iso(row.updatedAt) > group.updatedAt) { group.updatedAt = iso(row.updatedAt); group.latestStatus = row.status; }
+    if (group.total === row.count || iso(row.updatedAt) > group.updatedAt) { group.updatedAt = iso(row.updatedAt); group.latestStatus = row.status; }
     groups.set(identity.key, group);
   }
   return [...groups.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(row => projectSchema.parse(row));
 }
 export async function getRepositoryContext(key: string) {
-  const paths = await projectPaths(key);
-  if (!paths.length) return null;
-  const db = await database();
-  const [row] = await db.select({ path: sql<string>`${tasks.repository}->>'path'`, baseBranch: sql<string | null>`${tasks.repository}->>'baseBranch'` })
-    .from(tasks).where(inArray(sql`${tasks.repository}->>'path'`, paths)).orderBy(desc(tasks.updatedAt)).limit(1);
-  if (!row) return null;
-  return { name: repositoryIdentity(row.path).name, repositoryPath: row.path, ...(row.baseBranch ? { baseBranch: row.baseBranch } : {}) };
+  const registered = (await registeredRepositories()).find(row => repositoryIdentity(row.path).key === key);
+  if (!registered) return null;
+  const availability = await repositoryAvailability(registered.path);
+  if (!availability.available) return null;
+  const paths = await projectPaths(key), db = await database();
+  const [row] = paths.length ? await db.select({ baseBranch: sql<string | null>`${tasks.repository}->>'baseBranch'` })
+    .from(tasks).where(inArray(sql`${tasks.repository}->>'path'`, paths)).orderBy(desc(tasks.updatedAt)).limit(1) : [];
+  return { name: registered.name, repositoryPath: registered.path, ...(row?.baseBranch ? { baseBranch: row.baseBranch } : {}) };
 }
 export async function getOpenEscalations(options: { page?: number; all?: boolean; project?: string } = {}) {
   const db = await database(), page = options.page ?? 1;
@@ -178,8 +186,10 @@ export async function getOverview() {
 // Clip log fields in PostgreSQL before transport. Overview/list queries never select run.result.
 const boundedResult = sql`jsonb_build_object(
   'error', left(${runs.result}->>'error', 2000),
-  'workerResult', jsonb_build_object('message', left(${runs.result}->'workerResult'->>'message', 8000), 'messageTruncated', length(${runs.result}->'workerResult'->>'message') > 8000),
+  'workerResult', jsonb_build_object('success', ${runs.result}->'workerResult'->'success', 'message', left(${runs.result}->'workerResult'->>'message', 8000), 'messageTruncated', length(${runs.result}->'workerResult'->>'message') > 8000),
   'git', case when ${runs.result}->'git' is null then null else jsonb_build_object(
+    'countIsLowerBound', coalesce((${runs.result}->'git'->>'truncated')::boolean, false),
+    'changedFileCount', jsonb_array_length(coalesce(${runs.result}->'git'->'changedFiles', '[]'::jsonb)),
     'statusShort', left(${runs.result}->'git'->>'statusShort', 8000), 'diffStat', left(${runs.result}->'git'->>'diffStat', 8000),
     'truncated', coalesce((${runs.result}->'git'->>'truncated')::boolean, false) or jsonb_array_length(coalesce(${runs.result}->'git'->'changedFiles', '[]'::jsonb)) > 100,
     'changedFiles', (select coalesce(jsonb_agg(left(f #>> '{}', 500)), '[]'::jsonb) from (select value as f from jsonb_array_elements(coalesce(${runs.result}->'git'->'changedFiles', '[]'::jsonb)) limit 100) files)) end,

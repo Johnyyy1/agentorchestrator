@@ -16,6 +16,7 @@ export const taskQuerySchema = z.object({
 export type TaskQuery = z.infer<typeof taskQuerySchema>;
 export const projectSchema = z.object({
   key: text, name: text, path: text,
+  registered: z.boolean().default(false), available: z.boolean().default(false), unavailableReason: nullableText.default(null),
   running: z.number(), queued: z.number(), waiting: z.number(), failed: z.number(), completed: z.number(), total: z.number(),
   updatedAt: date, latestStatus: text,
 });
@@ -54,9 +55,9 @@ export const runSchema = z.object({
   id: z.uuid(), attempt: z.number(), worker: text, tier: nullableText, status: text,
   capability: nullableText, selectedWorker: nullableText, model: nullableText, fallbackReason: nullableText, routeReason: nullableText,
   failureKind: nullableText, parentRunId: nullableText, startedAt: date, finishedAt: date.nullable(),
-  error: nullableText, message: text, messageTruncated: z.boolean(),
+  error: nullableText, message: text, messageTruncated: z.boolean(), workerSucceeded: z.boolean().nullable(),
   workspace: z.object({ path: text, branch: text, baseBranch: text, baseCommit: text }).nullable(),
-  git: z.object({ changedFiles: z.array(text), statusShort: text, diffStat: text, truncated: z.boolean() }).nullable(),
+  git: z.object({ changedFiles: z.array(text), changedFileCount: z.number().int().nonnegative(), countIsLowerBound: z.boolean(), statusShort: text, diffStat: text, truncated: z.boolean() }).nullable(),
   checks: z.array(checkSchema),
 });
 export type RunDto = z.infer<typeof runSchema>;
@@ -93,3 +94,6 @@ export const delegateResultSchema = z.discriminatedUnion('action', [
 export type DelegateResultDto = z.infer<typeof delegateResultSchema>;
 export const answerInputSchema = z.strictObject({ answer: text.trim().min(1).max(6000) });
 export const abandonInputSchema = z.strictObject({ taskId: z.uuid(), confirmed: z.literal(true) });
+
+export const registerRepositoryInputSchema = z.strictObject({ path: text.trim().min(1).max(4096) });
+export const registeredRepositorySchema = z.object({ id: z.uuid(), key: text, name: text, path: text });

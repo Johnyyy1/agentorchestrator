@@ -285,3 +285,26 @@ blockquote { margin:15px 0 0; border-left:2px solid var(--accent); padding-left:
 @media(max-width:560px) { h1 { font-size:28px; letter-spacing:-.8px; } .main-content { padding-left:20px; padding-right:20px; } .sidebar { padding-left:20px; padding-right:20px; } .nav-link { padding-left:8px; padding-right:8px; } .nav-link svg { display:none; } .page-header { align-items:flex-start; gap:16px; } .page-header>.live-note { padding-top:4px; } .command { padding:17px 17px 13px; } .command textarea { font-size:17px; min-height:85px; } .command-footer { gap:12px; align-items:stretch; flex-direction:column; } .command-footer select { max-width:none; width:100%; } .command-footer>div { width:100%; } .command-footer .button { align-self:flex-end; } .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:23px 0; padding-bottom:24px; margin-bottom:30px; } .metrics a:nth-child(2) { border-right:0; } .metrics a:nth-child(3) { padding-left:0; } .metrics a>span { font-size:11px; } .metrics strong { font-size:29px; } .overview-columns { grid-template-columns:1fr; gap:0; } .operator-note { display:none; } .task-row-end { gap:7px; } .row-meta { font-size:8px; } .task-row strong { font-size:12px; } .activity-rows>li { grid-template-columns:57px 5px minmax(0,1fr); gap:10px; } .activity-task { display:none; } .activity-time { font-size:9px; } .task-introduction { grid-template-columns:1fr; gap:24px; } .timeline { grid-template-columns:1fr; } .detail-fields { gap:14px; } .detail-fields dd { font-size:10px; } .attempt-header h3 { font-size:18px; } .task-header-state { gap:8px; } .task-header-state .live-note { font-size:9px; } .decision-context h2 { font-size:23px; } .decision-actions { gap:18px; flex-wrap:wrap; } .resolved-list a { gap:12px; flex-wrap:wrap; } .provider-heading { align-items:flex-start; flex-direction:column; } .provider-heading h2 { font-size:21px; } .system-error { padding:20px; gap:12px; } .system-error code { font-size:9px; } .workspace-footer span:last-child { font-size:9px; } }
 
 @media(max-width:560px) { .overview-columns>div:last-child { order:-1; } .activity-time { white-space:nowrap; } }
+
+.task-outcome { color: var(--fg); background: var(--surface); margin: 0 0 32px; padding: 24px; border: 1px solid var(--line); border-left: 4px solid currentColor; border-radius: 12px; overflow-wrap: anywhere; }
+.task-outcome h2 { font-size: 15px; letter-spacing: .08em; margin-bottom: 20px; }
+.task-outcome h3 { font-size: 13px; margin: 20px 0 8px; }
+.outcome-report { white-space: pre-wrap; max-width: 85ch; }
+.outcome-reason, .outcome-question { margin-bottom: 20px; }
+.outcome-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.outcome-checks { list-style: none; padding: 0; }
+.task-outcome pre { max-width: 100%; overflow-x: auto; }
+.repository-registration { margin: 12px 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; }
+.repository-registration form { display: grid; gap: 10px; }
+.repository-registration input { width: 100%; min-width: 0; }
+.repository-context-path { display: block; max-width: 45ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) { .outcome-metadata { grid-template-columns: 1fr; gap: 0; } .task-outcome { padding: 16px; } }
+
+.task-outcome.completed { border-left-color: var(--good); }
+.task-outcome.waiting_human { border-left-color: var(--warn); }
+.task-outcome.failed { border-left-color: var(--danger); }
+.task-outcome.completed h2 { color: var(--good); }
+.task-outcome.waiting_human h2 { color: var(--warn); }
+.task-outcome.failed h2 { color: var(--danger); }
+.repository-registration input { padding: 9px; margin-top: 6px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 3px; }
+.command-footer>div { flex-wrap: wrap; min-width: 0; }

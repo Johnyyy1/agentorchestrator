@@ -227,6 +227,18 @@ engine. Browser nikdy neurčuje workspace filesystem path, shell ani status.
 Readiness běží bez inference v coalesced 20s procesní cache. Cloud binary
 presence je unknown, nikoli důkaz auth. Routes se obnovují pollingem 4/15s
 podle activity a browser visibility. Projects jsou hash normalizovaného
-repository.path, bez nové tabulky či semantic memory. Host/Origin kontrola,
+repository.path. Minimální `repositories` registry ukládá UUID, name, canonical
+path (unique), createdAt a updatedAt; migrace `0004_loving_pretty_boy.sql`.
+Nemá roadmap ani semantic memory. Registration validuje Git root serverově;
+delegace přijímá pouze key registrované a znovu ověřené cesty. Historické
+cesty jsou read-only skupiny do registrace. `JONAS_OS_REPOSITORIES` zajišťuje
+explicitní bootstrap bez hledání adresářů. Host/Origin kontrola,
 loopback binding, strict body schema, bounded/redacted plain text a request-ID
 cache vymezují lokální bezpečnostní hranici. [Detailní kontrakty a limity](control-plane.md).
+
+Final Result je čistá projekce existující `runs.result.workerResult.message`,
+Git/verification metadata a review vázaného na stejný run. Primární report
+pochází z posledního úspěšného coding workeru, u legacy dat z completed runu.
+SQL omezuje payload a ponechává skutečný počet uložených changedFiles.
+Worker prompty žádají operátorský report také při opravách; parser jeho
+formát nevyžaduje. Žádná inference navíc ani změna completion policy.

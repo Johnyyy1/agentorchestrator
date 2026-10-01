@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, Check, CornerDownLeft, LoaderCircle } from 'lucide-react';
 import type { EscalationDto, ProjectDto, DelegateResultDto } from '../../../src/control-plane/contracts.js';
-import { delegateResultSchema } from '../../../src/control-plane/contracts.js';
+import { delegateResultSchema, registeredRepositorySchema } from '../../../src/control-plane/contracts.js';
 import { Status } from './primitives.js';
 
 async function post(operation: string, value: unknown, key: string) {
@@ -17,9 +17,12 @@ function Busy() { return <LoaderCircle size={15} className="busy-icon" aria-hidd
 export function CommandBar({ projects }: { projects: ProjectDto[] }) {
   const router = useRouter(), lock = useRef(false), requestKey = useRef<string | null>(null);
   const [goal, setGoal] = useState(''), [project, setProject] = useState(''), [pending, setPending] = useState(false);
+  const [added, setAdded] = useState<ProjectDto | null>(null);
+  const inventory = added && !projects.some(p => p.key === added.key) ? [...projects, added] : projects;
+  const selected = inventory.find(p => p.key === project);
   const [result, setResult] = useState<DelegateResultDto | null>(null), [error, setError] = useState('');
   async function submit() {
-    if (lock.current || !goal.trim()) return;
+    if (lock.current || !goal.trim() || (project && !selected?.available)) return;
     lock.current = true; setPending(true); setError(''); setResult(null);
     requestKey.current ??= crypto.randomUUID();
     try {
@@ -32,8 +35,28 @@ export function CommandBar({ projects }: { projects: ProjectDto[] }) {
   return <section className="command" aria-label="Delegate a goal"><form onSubmit={e => { e.preventDefault(); void submit(); }}>
     <label htmlFor="goal">What should Jonas OS do?</label><textarea id="goal" name="goal" rows={2} maxLength={4000} required disabled={pending} placeholder="Describe the next goal…" value={goal}
       onChange={e => { setGoal(e.target.value); requestKey.current = null; }} onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit(); } }} />
-    <div className="command-footer"><div><label className="sr-only" htmlFor="repository">Repository context</label><select id="repository" value={project} disabled={pending} onChange={e => { setProject(e.target.value); requestKey.current = null; }}><option value="">No repository context</option>{projects.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}</select><span className="command-hint">Local Chief plans · existing worker executes</span></div><button className="button primary" disabled={pending || !goal.trim()}>{pending ? <Busy /> : <ArrowRight size={15} />}{pending ? 'Chief is planning…' : 'Delegate'}{!pending && <CornerDownLeft size={12} className="key-icon" />}</button></div>
-  </form>{error && <p role="alert" className="form-error">{error}</p>}{result && <div role="status" className="command-result">{result.action === 'create_task' ? <><Check size={17} /><div><strong>Task queued · {result.title}</strong><p className="mono">{result.capability} · {result.taskId}</p><Link href={`/tasks/${result.taskId}`}>Inspect task <ArrowRight size={13} /></Link></div></> : result.action === 'ask_human' ? <div><strong>Chief needs clarification</strong><p>{result.question}</p><span className="muted">Add the answer to your goal and delegate again.</span></div> : <div><strong>No action needed</strong><p>{result.reason}</p></div>}</div>}</section>;
+    <div className="command-footer"><div><label className="sr-only" htmlFor="repository">Repository context</label><select id="repository" value={project} disabled={pending} onChange={e => { setProject(e.target.value); requestKey.current = null; }}><option value="">No repository context</option>{inventory.map(p => <option key={p.key} value={p.key} disabled={!p.available} title={p.path}>{p.name} · {p.path.length > 50 ? `…${p.path.slice(-49)}` : p.path}{!p.available ? p.registered ? " · unavailable" : " · register to use" : ""}</option>)}</select><span className="repository-context-path mono" title={selected?.path}>{selected?.path}</span><span className="command-hint">Local Chief plans · existing worker executes</span></div><button className="button primary" disabled={pending || !goal.trim() || Boolean(project && !selected?.available)}>{pending ? <Busy /> : <ArrowRight size={15} />}{pending ? 'Chief is planning…' : 'Delegate'}{!pending && <CornerDownLeft size={12} className="key-icon" />}</button></div>
+  </form><RepositoryRegistration disabled={pending} onAdded={entry => { setAdded(entry); setProject(entry.key); requestKey.current = null; }} />{selected && !selected.available && <p className="form-error">{selected.unavailableReason}</p>}{error && <p role="alert" className="form-error">{error}</p>}{result && <div role="status" className="command-result">{result.action === 'create_task' ? <><Check size={17} /><div><strong>Task queued · {result.title}</strong><p className="mono">{result.capability} · {result.taskId}</p><Link href={`/tasks/${result.taskId}`}>Inspect task <ArrowRight size={13} /></Link></div></> : result.action === 'ask_human' ? <div><strong>Chief needs clarification</strong><p>{result.question}</p><span className="muted">Add the answer to your goal and delegate again.</span></div> : <div><strong>No action needed</strong><p>{result.reason}</p></div>}</div>}</section>;
+}
+export function RepositoryRegistration({ disabled = false, onAdded }: { disabled?: boolean; onAdded?: (entry: ProjectDto) => void }) {
+  const router = useRouter(), lock = useRef(false), requestKey = useRef<string | null>(null);
+  const [open, setOpen] = useState(false), [path, setPath] = useState(''), [pending, setPending] = useState(false);
+  const [error, setError] = useState(''), [success, setSuccess] = useState('');
+  async function register() {
+    if (lock.current || !path.trim()) return;
+    lock.current = true; setPending(true); setError(''); setSuccess(''); requestKey.current ??= crypto.randomUUID();
+    try {
+      const row = registeredRepositorySchema.parse(await post('repository', { path }, requestKey.current));
+      onAdded?.({ key: row.key, name: row.name, path: row.path, registered: true, available: true, unavailableReason: null,
+        running: 0, queued: 0, waiting: 0, failed: 0, completed: 0, total: 0, updatedAt: new Date().toISOString(), latestStatus: 'No tasks' });
+      setSuccess(`Registered ${row.name}`); setOpen(false); setPath(''); requestKey.current = null; router.refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Repository registration failed.'); }
+    finally { lock.current = false; setPending(false); }
+  }
+  return <div className="repository-registration"><button type="button" className="text-button" disabled={disabled || pending} aria-expanded={open} onClick={() => { setOpen(!open); setError(''); setSuccess(''); }}>+ Add repository</button>
+    {open && <form onSubmit={e => { e.preventDefault(); void register(); }}><label>Repository path<input name="repositoryPath" placeholder="/absolute/path/to/repository" maxLength={4096} required value={path} disabled={pending} onChange={e => { setPath(e.target.value); requestKey.current = null; }} /></label><p className="muted">Enter the Git working tree path. The server validates it; no directory browser is available.</p><button className="button primary" disabled={pending || !path.trim()}>{pending ? 'Validating…' : 'Add repository'}</button></form>}
+    {error && <p role="alert" className="form-error">{error}</p>}{success && <p role="status">{success}</p>}
+  </div>;
 }
 export function DecisionPanel({ entry }: { entry: EscalationDto }) {
   const router = useRouter(), lock = useRef(false), key = useRef<string | null>(null);

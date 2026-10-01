@@ -3,7 +3,8 @@
 Lokální operátorské rozhraní pro Jonas OS. Aplikace `apps/control-plane` používá
 Next.js App Router, React, TypeScript a Tailwind CSS. Existující orchestrátor,
 router, sandboxy, retry pravidla a Drizzle schéma zůstávají samostatným enginem.
-Nevznikla nová databázová tabulka ani migrace.
+Minimální registry používá tabulku `repositories` a migraci
+`0004_loving_pretty_boy.sql`; nejde o budoucí Project Model.
 
 ## Spuštění
 
@@ -56,10 +57,10 @@ systémové; build nestahuje fonty a UI nevyžaduje externí CDN.
 | Route | Účel |
 | --- | --- |
 | `/` | Delegování cíle, running/queued/waiting/failed/pending, aktivní a čekající úkoly, otevřené eskalace, recent activity |
-| `/projects` | Seznam skupin podle normalizovaných repository paths |
+| `/projects` | Registrované repozitáře včetně nulového počtu úkolů, historické skupiny a registrace |
 | `/projects/[key]` | Aktivní/queued/completed/failed úkoly, rozhodnutí a recent activity daného repozitáře |
 | `/tasks` | Vyhledávání title/objective/UUID, status/category/worker/repository filtry, řazení a stránkování |
-| `/tasks/[id]` | Objective, acceptance criteria, lifecycle, attempts, routing, verifier, workspace metadata, review findings a eskalace |
+| `/tasks/[id]` | Final Result / Waiting for you / Failed, objective, acceptance criteria, lifecycle, attempts, verifier, review a workspace metadata |
 | `/decisions` | Eskalační inbox: otevřené první, potom resolved/cancelled, stránkování |
 | `/decisions/[id]` | Otázka, kontext, odpověď + resume, potvrzované abandon |
 | `/agents` | Čtyři execution lanes, modely, readiness a zaznamenané použití |
@@ -82,11 +83,57 @@ repository grounding a potom zavolá `submitDecision()`.
   jej znovu; nejedná se o uloženou orchestration escalation.
 - `no_action`: zobrazí reason, bez zápisu nebo vykonávání.
 
-Repository selector předává jen neprůhledný hash key. Server dohledá poslední
-persisted repository context. Browser nemůže dodat vlastní filesystem path
-ani baseBranch. První úkol v novém repozitáři musí dostat repository context
-přes existující API/příklady; UI zatím nemá registraci projektů. Samotný text
-„Pokračuj na Investi“ nevytváří projektovou paměť. Vyber odpovídající repository.
+Repository selector předává jen neprůhledný hash key. Server dohledá
+**registrovanou** cestu, znovu ověří Git working tree před Chief i před submission
+a zachová poslední historický `baseBranch`, pokud existuje. Bez něj platí
+stávající default enginu. Browser nemůže delegaci dodat vlastní cestu ani větev.
+Historické cesty jsou viditelné, ale musíš je zaregistrovat před delegováním.
+
+### První repozitář
+
+1. Po `npm run db:migrate` otevři Overview nebo Projects.
+2. Klikni **+ Add repository**, vlož absolutní cestu a potvrď **Add repository**.
+3. Server normalizuje cestu přes `realpath`, vyžaduje existující adresář a Git
+   working tree; podadresář mapuje na Git root. `.git` i alias do `.git`, soubor,
+   bare repo a neexistující cesta se odmítnou. Git běží s oddělenými argumenty,
+   bez shell interpolace a zděděných `GIT_DIR`/`GIT_WORK_TREE` overrides.
+4. Unique index odmítne duplicitu včetně trailing slash, `..` a symlink aliasu.
+5. Overview novou položku vybere automaticky. Projects ji zobrazí i s 0 úkoly.
+
+Registry uchovává UUID, name, canonical path a created/updated timestamps.
+Nedostupná nebo přesměrovaná registrovaná cesta zůstává pro diagnostiku,
+zobrazuje **Unavailable** a nelze ji z UI delegovat. Validace registry
+nedokládá čistý checkout, existující base commit ani připravené dependencies;
+tyto stávající požadavky kontroluje worktree engine.
+
+Volitelně nastav v root `.env` `JONAS_OS_REPOSITORIES` na jednu absolutní cestu
+nebo JSON pole cest. Při čtení inventory/contextu server idempotentně zajistí
+validní entries. Neplatnou cestu nezaregistruje, vypíše stručnou diagnostiku a
+ostatní položky zachová. Neplatný formát konfigurace je chyba. Žádné skenování
+home, directory browser ani čtení libovolných souborů nevzniká.
+Samotný text „Pokračuj na Investi“ nevytváří projektovou paměť; vyber repository.
+
+### Výsledek úkolu
+
+Dokončený task má hned pod headerem **FINAL RESULT**: skutečný veřejný final
+message posledního úspěšného coding workeru, změny popsané workerem,
+počet/seznam souborů a diff stat, deterministické checks a nezávislé review
+**stejného runu**. Plain text nepotřebuje přesné Markdown headings. Coding
+prompty pro OpenCode i Codex, včetně oprav, žádají `Summary`, `What changed`,
+`Files changed`, `Notes / limitations`. Samotné tvrzení workeru nenahrazuje
+persistované checks/review; `skipped`, failed a timeout jsou odlišené.
+
+Chybějící report má text **No final worker summary was captured** a zobrazí
+jen dostupná metadata. Display limits jsou viditelné: přesný počet uložených
+cest se nezmenšuje s list limitem 100; při neúplných persisted Git metadata
+je počet dolní mez. Bez Git metadat se neuvádí vymyšlená nula. Zpráva je
+redigovaná a obyčejný text; skryté reasoning traces se nezobrazují.
+
+`waiting_human` má **WAITING FOR YOU**, důvod zastavení, aktuální otázku a
+poslední worker report. `failed` má **FAILED**, zaznamenanou příčinu a poslední
+report s kontextem checks/review. Objective a technická lifecycle jsou až pod
+tímto panelem. Žádné nové modelové volání, summary persistence ani podmínka
+pro dokončení tasku nevzniká; read model nemění orchestration policy.
 
 Odpověď volá `answerEscalation()`: transaction atomicky ukládá answer,
 resolved, queued a nový job existujícího tasku. Při enqueue failure se rollback
@@ -118,6 +165,7 @@ API:
 | Endpoint | Vstup/účinek |
 | --- | --- |
 | `GET /api/providers` | Cheap readiness + aggregate DB use, bez inference |
+| `POST /api/commands/repository` | `path`; serverová validace a zápis registry |
 | `POST /api/commands/delegate` | `goal`, volitelně `projectKey`; Local Chief + submission |
 | `POST /api/commands/answer` | `id`, `answer`; existující escalation service |
 | `POST /api/commands/abandon` | `taskId`, `confirmed: true`; existující abandonment service |
@@ -140,7 +188,7 @@ Read model má tyto limity:
 | Run message / check output / Git status / diff stat | 8000 znaků každé zobrazené položky |
 | Changed files | 100 cest, 500 znaků/cesta |
 | Objective / acceptance / context | 16000 znaků; 50 kritérií po 2000; 20 context položek po 2000 |
-| Repository inventory | Max. 2000 různých persisted cest pro výběr kontextu |
+| Repository inventory | Max. 2000 registry entries a 2000 historických cest pro kontext; max. 100 bootstrap cest |
 
 List nevybírá result/logy. Last-run lookup je jeden bulk dotaz, nikoli N+1.
 Detail omezuje zprávu, check output a task text už v PostgreSQL; zkrácený
@@ -152,9 +200,10 @@ nikoli odhad začátku checks. Run startedAt je uložený čas založení runu, 
 může předcházet skutečnému worker startu. Audit worker_started zaznamenává start
 workeru zvlášť. Legacy flows doplňuje activity feed labels „Recorded …“.
 
-Projects nejsou novou doménovou entitou. Key je hash normalizovaného
-repository.path; skupiny nevycházejí ze symlink realpath a přesun repozitáře
-vytvoří jinou skupinu. Neexistuje roadmap, procenta dokončení ani semantic memory.
+Projects nejsou plánovací doménovou entitou. Registry používá canonical Git
+root; key zůstává hash normalizované cesty. Historické cesty se deduplikují
+normalizací řetězce bez procházení filesystemu; historický symlink alias může
+mít samostatnou skupinu. Neexistuje roadmap, procenta ani semantic memory.
 
 ## Health a obnovování
 
@@ -192,7 +241,8 @@ npm run control-plane:fixtures
 
 Explicitní development command zapne `CONTROL_PLANE_FIXTURES=1`. Data jsou
 **jen v paměti procesu**, banner označuje simulaci, mutace používají fake Chief
-a fake služby. Nic se neseeduje do DB, nespouští fronta ani skutečná inference.
+a fake služby. Nové registrace validují skutečný testovací Git adresář, ale
+ukládají se pouze do paměti fixture procesu. Nic se neseeduje do DB, nespouští fronta ani skutečná inference.
 Restart resetuje data. V production je fixture flag odmítnutý; nemůže tiše
 spadnout zpět na mutace skutečných dat. Do běžné `.env` ho nepřidávej.
 
@@ -210,21 +260,25 @@ npm run control-plane:e2e
 
 `npm test` nyní zahrnuje i pure Control Plane tests. `control-plane:db:test`
 používá existující lokální **vývojovou DB**, vloží jen vlastní označené rows,
-nikdy neposílá job workeru a uklidí cascade historii. Browser smoke spouští
+nikdy neposílá job workeru a uklidí cascade historii i vlastní registry entry
+a dočasný Git adresář. Ověřuje také bootstrap bez historických úkolů, duplicity
+a nedostupný repozitář. Browser smoke spouští
 vlastní fixture dev server na 127.0.0.1:3107, testuje rendering, filtry, task
 history, odpověď, rollback-like error UX, Chief create/ask/no_action, projekty,
-health, cross-origin/Host guards a overflow. Nevstupuje do skutečné DB.
+health, Final Result, registraci dočasného Git repozitáře, nulové task counts,
+fake-Chief repository grounding, cross-origin/Host guards a overflow. Nevstupuje do skutečné DB.
 
 Screenshoty skutečného UI ukládá do [control-plane/](control-plane/), včetně
 1440×900, 1280×800, 390×844 a dark mode. Nejsou generované ilustrace. Kompletní
-výsledky tohoto milestone jsou v [reportu](control-plane-report.md).
+výsledky původního milestone jsou v [reportu](control-plane-report.md).
+[Registry a Final Result report](control-plane-results-report.md) popisuje tuto změnu a její QA.
 
 ## Limity V1
 
 - Web nezjišťuje, zda běží queue consumer; queued state sám jeho dostupnost
   nedokládá. Worker se spouští samostatně.
 - Cloud readiness neověřuje přihlášení ani dostupnost modelu.
-- První repository context se zavádí existujícím API. Neexistuje project registry.
+- Repository Registry V1 neobsahuje roadmap, project model ani filesystem browser.
 - Detail a output jsou bounded, plný diff není persisted. Historické záznamy
   s chybějícími metadata nevytvářejí domyšlené lifecycle stages.
 - Po restartu neexistuje durable HTTP idempotency; uncertain submission řeš

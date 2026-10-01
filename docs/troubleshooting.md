@@ -172,3 +172,20 @@ Worktree nikdy automaticky nemaž; [podrobné limity a recovery](repair-loop.md)
 - **Port je obsazený:** `PORT=3001 npm run control-plane:dev`.
 
 [Podrobnosti a známé limity](control-plane.md), [ověření milestone](control-plane-report.md).
+
+### Registry a Final Result
+
+- **Prázdný repository selector:** aplikuj `npm run db:migrate`, potom přidej
+  absolutní Git cestu přes **+ Add repository**. Historický task už není nutný.
+- **Registration required:** položka pochází pouze z historie; zaregistruj ji
+  před delegací. **Unavailable:** cesta zmizela, Git metadata nejsou validní
+  nebo nyní odkazuje jinam. Registry se nemaže; obnov původní adresář a refresh.
+- **Duplicate:** server převádí symlinky a podadresáře na canonical Git root.
+  Vyber již registrovanou položku.
+- **Bootstrap error:** `JONAS_OS_REPOSITORIES` má být absolutní cesta nebo validní
+  JSON pole max. 100 cest. Neplatné Git cesty se nezaregistrují; zkontroluj
+  serverovou diagnostiku a restartuj web po změně `.env`.
+- **No final worker summary was captured:** worker nezanechal veřejnou zprávu
+  pro vybraný successful run; UI ukazuje dostupná metadata bez nové inference.
+  Truncated report/list má viditelné upozornění. Chybějící checks/review nejsou
+  automaticky úspěšné a nikdy se nenahrazují verdict z jiného pokusu.

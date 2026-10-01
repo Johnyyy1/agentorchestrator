@@ -1,3 +1,4 @@
+import { finalReportInstructions } from "./final-report.js";
 import { realpath } from "node:fs/promises";
 import { eligibleForLocalCoding, routeCapability } from "../router/capability-router.js";
 import type { ProviderAvailability, RoutingMetadata } from "../router/capability-router.js";
@@ -86,6 +87,7 @@ INSTRUCTIONS
 - Do not perform unrelated changes.
 - Report what you did.
 - Report any uncertainty or blocker.
+${task.category === "coding" ? finalReportInstructions : ""}
 `.trim();
 }
 

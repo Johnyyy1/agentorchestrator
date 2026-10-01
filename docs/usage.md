@@ -10,7 +10,8 @@
 
 Spusť `npm run worker`. Úkol lze zařadit i bez consumeru, zůstane `queued`.
 Lokální UI spustíš `npm run control-plane:dev` na 127.0.0.1:3000.
-Overview deleguje cíl přes Chief, Tasks ukazuje lifecycle a Decisions umožňuje
+Overview umožňuje přes **+ Add repository** zaregistrovat první Git checkout
+a deleguje cíl přes Chief, Tasks ukazuje výsledek i lifecycle a Decisions umožňuje
 answer/resume nebo potvrzované abandon waiting_human tasku. Obecný rerun či
 rušení běžícího workeru nejsou podporované. [Control Plane](control-plane.md).
 
@@ -201,6 +202,14 @@ odděleně od TaskSpec a brief se předává workeru jako task data. Pevná exec
 pravidla mají přednost. Chief nemůže určit konkrétní provider nebo model.
 
 ## Výsledky
+
+V detailu dokončeného úkolu je **FINAL RESULT** před objective a lifecycle:
+veřejný worker report (`Summary`, `What changed`, `Files changed`,
+`Notes / limitations`) a samostatná persistovaná verification/review stejného
+pokusu. Chybějící report je výslovně označený; metadata jej nenahrazují
+vymyšleným shrnutím. Skips nejsou passing tests. Čekající/failed task ukazuje
+**WAITING FOR YOU**/**FAILED** s důvodem, otázkou a posledním reportem.
+Summary nevolá další model a neovlivňuje completion. [Podrobnosti](control-plane.md#výsledek-úkolu).
 
 ```sh
 npx tsx examples/inspect-task.ts <task-UUID>
