@@ -3,7 +3,7 @@ import type { Capability } from "../chief/capabilities.js";
 import { routeTask } from "./router.js";
 import type { TaskSpec, WorkerId, WorkerRoute } from "../workers/types.js";
 
-export type ProviderStatus = { available: boolean; reason?: string; model?: string };
+export type ProviderStatus = { available: boolean; reason?: string; model?: string; infrastructure?: boolean };
 export type ProviderAvailability = Record<WorkerId, ProviderStatus>;
 export type RoutingMetadata = {
   requestedCapability: Capability | null;

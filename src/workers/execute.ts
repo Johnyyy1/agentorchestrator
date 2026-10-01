@@ -7,6 +7,7 @@ import { providerAvailability } from "../router/provider-availability.js";
 import { recommendationSchema } from "../router/recommendation.js";
 import type { Recommendation } from "../router/recommendation.js";
 import { taskSpecSchema } from "../tasks/task-spec.js";
+import { OpenCodeInfrastructureError } from "../local/opencode-preflight.js";
 import { runOpenCode } from "./opencode.js";
 import { buildLocalCodingPrompt } from "./local-coding-prompt.js";
 import { runCodex } from "./codex.js";
@@ -29,6 +30,7 @@ export type ExecutionResult = {
   workerResult: unknown;
   success?: boolean;
   workerStarted?: boolean;
+  failureKind?: "infrastructure";
   workspace?: TaskWorktree;
   verification?: VerificationResult;
   git?: WorktreeInspection;
@@ -136,6 +138,13 @@ export async function executeTask(
     if (workspace) await options.onWorkspaceCreated?.(workspace);
     options.signal?.throwIfAborted();
     const availability = options.availability ?? await providerAvailability(eligibleForLocalCoding(task, capability));
+    if (eligibleForLocalCoding(task, capability) && availability.opencode.infrastructure === true) {
+      result.route = { worker: "opencode", reason: "Local worker infrastructure rejected execution before inference." };
+      result.routing = { requestedCapability: capability ?? null, selectedWorker: "opencode", fallbackReason: null,
+        model: availability.opencode.model ?? null, reason: result.route.reason };
+      await options.onRouteSelected?.(result.routing, result.route);
+      throw new OpenCodeInfrastructureError(availability.opencode.reason ?? "OpenCode infrastructure/configuration unavailable.");
+    }
     const selected = routeCapability(task, capability, availability);
     route = selected.route;
     result.route = route;
@@ -158,11 +167,12 @@ export async function executeTask(
             `${prompt}\n\nWORKSPACE SAFETY\n- Work only in this isolated task workspace.\n- Do not commit, push, merge, or edit the original repository.`, workspace.path,
             { mode: "workspace-write", workspace, ...(options.signal ? { signal: options.signal } : {}) });
       result.workerResult = workerResult;
+      if (route.worker === "opencode" && (workerResult as { failureKind?: string }).failureKind === "infrastructure") result.failureKind = "infrastructure";
       // Every attempt verifies independently; application orchestration decides repairs.
       result.verification = await verifyWorktree(workspace, options.signal ? { signal: options.signal } : {});
-      result.success = workerResult.success && result.verification.success;
+      result.success = workerResult.success && result.verification.success && result.failureKind !== "infrastructure";
       if (!result.success) result.error = result.verification.failureKind === "infrastructure" || workerResult.success
-        ? verifierFailureMessage(result.verification) : `${route.worker} execution failed.`;
+        ? verifierFailureMessage(result.verification) : (route.worker === "opencode" ? (workerResult as { error?: string }).error ?? "OpenCode execution failed." : `${route.worker} execution failed.`);
       console.info("Coding worker end:", JSON.stringify({ taskId: workspace.taskId, worker: route.worker,
         durationMs: Math.round(performance.now() - started), workerSuccess: workerResult.success, verificationSuccess: result.verification.success }));
     } else {
@@ -185,6 +195,7 @@ export async function executeTask(
     }
   } catch (error) {
     result.success = false;
+    if (error instanceof OpenCodeInfrastructureError) result.failureKind = "infrastructure";
     result.error = error instanceof Error ? error.message : String(error);
     if (workspace && result.workerStarted && !result.verification && !options.signal?.aborted) {
       try { result.verification = await verifyWorktree(workspace, options.signal ? { signal: options.signal } : {}); }

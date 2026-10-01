@@ -184,3 +184,10 @@ Chiefem. Historické číslo pokusu zůstává započtené a cap se nemění. Re
 ani human answer nad stejným infrastrukturním výsledkem nevyvolá nový coding
 pokus; tato změna nepřidává automatické reverify. Běžné aplikační failure
 checks pokračují existující opravnou cestou.
+
+Prokázaná OpenCode configuration/CLI/sandbox/context chyba před inferencí a známý
+worker runtime/preflight/search executable failure eskalují `infrastructure`.
+Zůstane jeden historický pokus a worktree; další coding provider, repair Chief ani
+review se automaticky nevolají ani po human answer nad stejným výsledkem.
+Samotné tool argument/path/policy chyby či `length` tento stop nevynucují;
+bez infrastructure důkazu zůstává původní repair lifecycle. [Diagnostika](opencode.md).

@@ -187,3 +187,13 @@ npm run orchestration:test
 
 `opencode:unit` a `reviewer:test` nadále zahrnují pure i OS testy.
 Root lint/build se nepřidávají: jejich nepřítomnost zůstává verifier SKIPPED.
+
+### Přímá OpenCode tool diagnostika
+
+`npm run opencode:tools:test` volá skutečný lokální model bez DB/orchestrace/verifieru.
+`npm run opencode:tools:test -- --primitives` ověří samostatně read/glob/write/read.
+Vyžaduje macOS/OpenCode/Ollama a modelový `num_ctx` shodný s `LOCAL_CODING_CONTEXT`;
+[alias setup](opencode.md#skutečný-kontext-ollama-přes-v1). Obě varianty zachovávají
+vlastní fixture/worktree/report a nikdy nevolají cloud. Nejsou součástí `npm test`.
+Fake `opencode:unit` kontroluje mismatch před inferencí a OS hranice; DB
+`orchestration:test` kontroluje infrastructure stop i po redelivery/human answer.

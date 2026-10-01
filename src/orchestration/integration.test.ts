@@ -142,6 +142,44 @@ test("durable coding orchestration A–K, safety boundaries and human service", 
       assert.equal(calls.get(task.id)?.length, 1); assert.equal(saved.reviews.length, 0);
       assert.equal(saved.escalations.at(-1)?.reasonType, "infrastructure");
     });
+    await t.test("local readiness context mismatch stops before any cloud/local worker invocation", async () => {
+      const task = await create("context-mismatch", 2);
+      await orchestrateCodingTask(task.id, { cwd: source, executor: (task, cwd, execution) => executeTask(task, cwd, {
+        ...execution,
+        availability: { opencode: { available: false, model: "ollama/fixture", infrastructure: true, reason: "context_mismatch: explicit model context required" }, codex: { available: true }, antigravity: { available: true } },
+        onWorkspaceCreated: async workspace => { workspaces.set(workspace.taskId, workspace); await execution.onWorkspaceCreated?.(workspace); },
+        opencodeExecutor: async () => { throw new Error("Must not invoke local worker"); },
+        codexExecutor: async () => { throw new Error("Must not invoke cloud fallback"); },
+      }), repair: async () => { throw new Error("Must not call repair Chief"); } });
+      const saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.runs.length, 1);
+      assert.equal(saved.runs[0]?.worker, "opencode"); assert.equal(saved.runs[0]?.failureKind, "infrastructure");
+      assert.equal(saved.events.some(e => e.kind === "worker_started"), false);
+      assert.equal(saved.escalations[0]?.reasonType, "infrastructure");
+      assert.equal(saved.reviews.length, 0); assert.ok(saved.runs[0]?.workspace);
+    });
+    await t.test("local worker infrastructure bypasses repair/review and remains stopped after redelivery/human answer", async () => {
+      const task = await create("local-infra", 2); const opts = options(task.title);
+      const guarded = { ...opts, executor: async (...args: Parameters<NonNullable<OrchestrationOptions['executor']>>) => {
+        const output = await opts.executor!(...args);
+        return { ...output, success: false, failureKind: "infrastructure" as const,
+          workerResult: { success: false, failureKind: "infrastructure", error: "OpenCode search executable failed to initialize or execute." },
+          error: "OpenCode search executable failed to initialize or execute." };
+      }, repair: async () => { throw new Error("Local infrastructure must not invoke repair Chief"); },
+      review: async () => { throw new Error("Local infrastructure must not invoke cloud review"); } };
+      await orchestrateCodingTask(task.id, guarded);
+      let saved = await load(task.id);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.runs.length, 1);
+      assert.equal(saved.runs[0]?.failureKind, "infrastructure");
+      assert.equal(saved.escalations[0]?.reasonType, "infrastructure"); assert.equal(saved.reviews.length, 0);
+      assert.equal(saved.events.some(e => ["repair_started", "review_started"].includes(e.kind)), false);
+      await orchestrateCodingTask(task.id, guarded);
+      await answerEscalation(saved.escalations[0]!.id, "Inspect infrastructure, preserve the worktree.");
+      await orchestrateCodingTask(task.id, guarded); saved = await load(task.id);
+      assert.equal(saved.runs.length, 1); assert.equal(calls.get(task.id)?.length, 1);
+      assert.equal(saved.task.status, "waiting_human"); assert.equal(saved.reviews.length, 0);
+      assert.equal(saved.escalations.at(-1)?.reasonType, "infrastructure");
+    });
     await t.test("C: review findings go through Chief, new attempt verifies and reviews again", async () => {
       const task = await create("review-repair"); await orchestrateCodingTask(task.id, options(task.title)); const state = await load(task.id);
       assert.equal(state.task.status, "completed"); assert.equal(state.runs.length, 2); assert.equal(state.reviews.length, 2);

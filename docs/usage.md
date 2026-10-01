@@ -84,7 +84,7 @@ Chief recommendation nebo třetí argument `createTask(spec, queueName,
 
 | Capability | Výsledná politika |
 | --- | --- |
-| local-coding | Normalizuje kategorii na coding, vyžaduje repository; OpenCode pro risk !=high, difficulty <= LOCAL_CODING_MAX_DIFFICULTY a úspěšnou readiness; jinak Codex |
+| local-coding | Normalizuje kategorii na coding, vyžaduje repository; OpenCode pro risk !=high, difficulty <= LOCAL_CODING_MAX_DIFFICULTY a úspěšnou readiness; běžná unavailable readiness může použít Codex, prokázaná infrastructure vede na waiting_human |
 | strong-coding | Normalizuje kategorii na coding, vyžaduje repository; Codex |
 | strong-general | Non-coding na Antigravity pro |
 | research | Non-coding na Antigravity s tierem podle původní náročnosti |
@@ -313,3 +313,9 @@ Běžný nenulový exit/timeout spuštěného testu, typechecku, lintu nebo buil
 zůstává verification failure se stávající bounded repair politikou. Chybějící
 script je výslovně SKIPPED. Testové HTTP servery používají explicitní
 127.0.0.1/::1. Viz [síťová omezení verifieru](architecture.md#verifikace).
+
+Pro OpenCode konfiguruj lokální alias se skutečným modelovým `num_ctx`, viz
+[setup a ověření kontextu](opencode.md#skutečný-kontext-ollama-přes-v1).
+Preflight a rozpoznaná local-worker infrastructure nepouští repair model ani cloud
+fallback. Worktree zůstane zachovaný. Failure report obsahuje bounded public tool
+kategorii/step reason; neobsahuje raw tool payload ani hidden reasoning.

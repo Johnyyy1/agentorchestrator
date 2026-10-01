@@ -309,3 +309,15 @@ povolí zápisy do worktree a tohoto runtime, AF_UNIX IPC jen v runtime a TCP
 podle výše popsané omezené politiky. Obecný `/tmp` zůstává read-only. Worker
 tuto výjimku nedostává. Runtime má limit 40 bajtů
 a cleanup kontroluje canonical cestu, inode, device a vlastníka.
+
+### OpenCode runtime context a infrastructure
+
+CLI `limit.context` není Ollama runtime `num_ctx`. Readiness i adaptér ověří explicitní
+model-level parametr přes `/api/show`; `/v1` jej nepřebírá z provider options.
+Dedicated lokální alias používá stejné váhy. Cwd/root/branch/write preflight a read/temp
+write-delete probe běží před inferencí, druhý probe ve stejném OS profilu jako worker.
+Bounded diagnostics ukládají pouze public category/code, pevnou zprávu, safe repo path
+nebo pathScope; žádný raw payload/reasoning. Známý model/runtime/config mismatch a
+explicitní ripgrep bootstrap/execution failure vedou na infrastructure/waiting_human,
+bez dalšího Chief/coding/review. Generic tool/model chyby zůstávají execution a mají
+stávající repair lifecycle. Router eligibility, attempt cap a verifier se nemění.

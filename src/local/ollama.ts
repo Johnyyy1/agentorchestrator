@@ -80,9 +80,10 @@ async function request(config: OllamaConfig, path: string, body?: unknown, readi
 const tagsSchema = z.object({ models: z.array(z.object({ name: z.string() })) });
 const showSchema = z.object({
   capabilities: z.array(z.string()),
+  parameters: z.string().max(64000).optional(),
   remote_model: z.string().optional(), remote_host: z.string().optional(),
 });
-export async function checkOllama(config = getOllamaConfig()): Promise<{ baseUrl: string; model: string; supportsThinking: boolean }> {
+export async function checkOllama(config = getOllamaConfig()): Promise<{ baseUrl: string; model: string; supportsThinking: boolean; modelContext?: number }> {
   config = validateConfig(config);
   const tags = tagsSchema.safeParse(await request(config, "/api/tags", undefined, true));
   if (!tags.success) throw new OllamaError("bad_response", "Ollama model inventory is invalid.");
@@ -94,7 +95,9 @@ export async function checkOllama(config = getOllamaConfig()): Promise<{ baseUrl
   if (!info.success) throw new OllamaError("bad_response", "Ollama model metadata is invalid.");
   if (info.data.remote_model || info.data.remote_host) throw new OllamaError("remote_model", "Chief requires local inference; remote Ollama models are rejected.");
   if (!info.data.capabilities.includes("completion")) throw new OllamaError("configuration", "Configured Ollama model does not support text generation.");
-  return { baseUrl: config.baseUrl, model: config.model, supportsThinking: info.data.capabilities.includes("thinking") };
+  const modelContext = info.data.parameters?.match(/^num_ctx\s+(\d+)\s*$/m)?.[1];
+  return { baseUrl: config.baseUrl, model: config.model, supportsThinking: info.data.capabilities.includes("thinking"),
+    ...(modelContext ? { modelContext: Number(modelContext) } : {}) };
 }
 const count = z.number().int().nonnegative().optional();
 const chatSchema = z.object({

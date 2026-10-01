@@ -92,3 +92,50 @@ test("agent denies shell, external paths, network tools, subagents, LSP and conf
   assert.equal(config.formatter, false);
   assert.deepEqual(config.enabled_providers, ["ollama"]);
 });
+
+test("bounded safe tool diagnostics omit arbitrary errors, payloads, paths and hidden reasoning", () => {
+  const output = [
+    { type: "reasoning", part: { text: "SECRET REASONING" } },
+    ...["read", "glob", "write", "edit"].map(tool => ({ type: "tool_use", part: { tool, state: { status: "completed", input: { filePath: "/repo/src/index.ts", content: "SECRET INPUT" }, output: "SECRET FILE CONTENT" } } })),
+    { type: "tool_use", part: { tool: "read", state: { status: "error", input: { filePath: "/outside/credentials" }, error: "EACCES permission denied /outside/credentials SECRET TOKEN" } } },
+    { type: "step_finish", part: { reason: "length" } },
+  ].map(event => JSON.stringify(event)).join("\n");
+  const result = parseOpenCodeOutput(output, 0, "fixture", 1, "", false, false, "/repo");
+  assert.equal(result.success, false); assert.equal(result.failureKind, "execution");
+  assert.match(result.error!, /read: Tool operation was denied access/);
+  assert.equal(result.toolDiagnostics?.[0]?.path, "src/index.ts");
+  assert.equal(result.toolDiagnostics?.at(-1)?.pathScope, "external");
+  assert.equal(result.toolDiagnostics?.at(-1)?.code, "EACCES");
+  for (const secret of ["SECRET", "credentials", "/outside", "FILE CONTENT"]) assert.ok(!JSON.stringify(result).includes(secret));
+  assert.ok(result.toolDiagnostics!.every(item => (item.message?.length ?? 0) <= 500));
+  const many = Array.from({ length: 100 }, () => JSON.stringify({ type: "tool_use", part: { tool: "read", state: { status: "error", error: "SECRET".repeat(1000) } } })).join("\n");
+  assert.equal(parseOpenCodeOutput(many, 0, "fixture", 1).toolDiagnostics?.length, 32);
+  assert.ok(!JSON.stringify(parseOpenCodeOutput(many, 0, "fixture", 1)).includes("SECRET"));
+});
+
+test("only explicit search executable failures classify infrastructure; tool/model mistakes retain repair semantics", () => {
+  const output = (error: string, tool = "glob") => JSON.stringify({ type: "tool_use", part: { tool, state: { status: "error", error } } }) + '\n{"type":"step_finish","part":{"reason":"length"}}';
+  assert.equal(parseOpenCodeOutput(output("ripgrep execution failed"), 0, "fixture", 1).failureKind, "infrastructure");
+  for (const error of ["File not found", "permission rejected", "Invalid arguments", "invalid regex rg", "EACCES"]) {
+    assert.equal(parseOpenCodeOutput(output(error), 0, "fixture", 1).failureKind, "execution");
+  }
+  assert.equal(parseOpenCodeOutput(output("ripgrep execution failed", "read"), 0, "fixture", 1).failureKind, "execution");
+});
+
+test("public terminal length reason is reported without inventing a tool failure", () => {
+  const result = parseOpenCodeOutput('{"type":"step_finish","part":{"reason":"length"}}', 0, "fixture", 1);
+  assert.equal(result.success, false); assert.match(result.error!, /Step reason: length/);
+  assert.ok(!result.error!.includes("tool error"));
+});
+
+test("a recovered infrastructure tool failure cannot misclassify later model truncation", () => {
+  const events = [
+    { type: "tool_use", part: { tool: "glob", state: { status: "error", error: "ripgrep execution failed" } } },
+    ...Array.from({ length: 35 }, () => ({ type: "tool_use", part: { tool: "read", state: { status: "completed" } } })),
+    { type: "tool_use", part: { tool: "glob", state: { status: "completed" } } },
+    { type: "step_finish", part: { reason: "length" } },
+  ].map(event => JSON.stringify(event)).join("\n");
+  const result = parseOpenCodeOutput(events, 0, "fixture", 1);
+  assert.equal(result.success, false); assert.equal(result.failureKind, "execution");
+  assert.equal(result.toolDiagnostics?.length, 32);
+});

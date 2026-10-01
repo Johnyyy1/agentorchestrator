@@ -8,7 +8,7 @@ import { openCodeConfig } from "./opencode-config.js";
 import { openCodeSandboxProfile } from "./opencode-sandbox.js";
 
 export type OpenCodeConfig = { binary: string; model: string; baseUrl: string; context: number; timeoutMs: number };
-export type OpenCodeErrorCode = "binary_missing" | "version_failed" | "unsupported_cli" | "ollama_unavailable" | "model_missing" | "models_failed" | "sandbox_unavailable" | "configuration";
+export type OpenCodeErrorCode = "binary_missing" | "version_failed" | "unsupported_cli" | "ollama_unavailable" | "model_missing" | "models_failed" | "sandbox_unavailable" | "configuration" | "context_mismatch";
 export type OpenCodeReadiness = {
   available: boolean; version: string | null; model: string; binary: string | null;
   error: { code: OpenCodeErrorCode; message: string } | null;
@@ -109,7 +109,10 @@ export async function checkOpenCode(): Promise<OpenCodeReadiness> {
     result.version = version.stdout.trim();
     try { result.outputFormat = (await inspectOpenCodeInterface(result.binary, runtime, config)).outputFormat; }
     catch { return fail("unsupported_cli", "Installed CLI lacks explicit model selection or cannot retain the required isolated security configuration."); }
-    try { await checkOllama({ ...getOllamaConfig(), model: config.model }); }
+    try {
+      const ready = await checkOllama({ ...getOllamaConfig(), model: config.model });
+      if (ready.modelContext !== config.context) return fail("context_mismatch", "OpenCode /v1 cannot set num_ctx. Configure a local model alias with explicit num_ctx equal to LOCAL_CODING_CONTEXT; config limits alone do not set the Ollama runtime context.");
+    }
     catch (error) { return fail(error instanceof OllamaError && error.code === "model_missing" ? "model_missing" : "ollama_unavailable",
       error instanceof OllamaError ? error.message : "Local Ollama readiness failed."); }
     const models = await boundedProcess(result.binary, ["models", "ollama"], { cwd: runtime, env, timeoutMs: 10000 });

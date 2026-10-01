@@ -17,7 +17,7 @@ export function openCodeConfig(model: string, baseUrl: string, context: number) 
     agent: { [localAgentName]: { description: "Jonas OS isolated local file-editing worker", mode: "primary",
       prompt: localCodingRules, permission, steps: 12 } },
     // Override the native provider only; do not declare a custom SDK/provider.
-    provider: { ollama: { options: { baseURL: `${baseUrl}/v1`, num_ctx: context },
-      models: { [model]: { limit: { context, output: 4096 }, options: { num_ctx: context, think: false } } } } },
+    provider: { ollama: { options: { baseURL: `${baseUrl}/v1` },
+      models: { [model]: { limit: { context, output: 4096 }, options: { think: false } } } } },
   };
 }

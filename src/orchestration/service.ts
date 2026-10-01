@@ -71,6 +71,11 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
       const escalate = async (reason: Parameters<typeof openEscalation>[2], question: string, summary: string) => {
         await openEscalation(taskId, latest?.id, reason, question, summary, { attempt, maxAttempts: limit, phase: state.phase });
       };
+      if (result?.failureKind === "infrastructure") {
+        await escalate("infrastructure", "Repair the local worker runtime/configuration and inspect its retained worktree before resuming.",
+          result.error?.slice(0, 500) ?? "Local worker infrastructure failed; no automatic coding repair.");
+        return;
+      }
       if (result?.verification?.failureKind === "infrastructure") {
         await escalate("infrastructure", "Repair verifier infrastructure and inspect the retained worktree. This unchanged diff must not launch another coding attempt.",
           verifierFailureMessage(result.verification));
@@ -139,7 +144,7 @@ export async function orchestrateCodingTask(taskId: string, options: Orchestrati
         controller.signal.throwIfAborted();
         await db.transaction(async tx => {
           await tx.update(runs).set({ result: output, ...(output.workspace ? { workspace: output.workspace } : {}), status: isVerified(output) ? "completed" : "failed", finishedAt: new Date(),
-            failureKind: isVerified(output) ? null : output.verification?.failureKind === "infrastructure" || output.workerStarted === false ? "infrastructure" : (output.workerResult as { success?: boolean } | null)?.success !== true ? "execution" : "verification",
+            failureKind: isVerified(output) ? null : output.failureKind === "infrastructure" || output.verification?.failureKind === "infrastructure" || output.workerStarted === false ? "infrastructure" : (output.workerResult as { success?: boolean } | null)?.success !== true ? "execution" : "verification",
             error: output.verification?.failureKind === "infrastructure" ? verifierFailureMessage(output.verification) : output.error ?? null }).where(eq(runs.id, run.id));
           await tx.update(tasks).set({ orchestration: { ...state, phase: "after_attempt", latestRunId: run.id }, updatedAt: new Date() }).where(eq(tasks.id, taskId));
           await tx.insert(orchestrationEvents).values({ taskId, runId: run.id, kind: "attempt_finished", data: { attempt: run.attempt, worker: output.route.worker, verified: isVerified(output) } });

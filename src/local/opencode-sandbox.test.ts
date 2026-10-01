@@ -10,6 +10,7 @@ import { checkOpenCode, containsOpenCodeConfig, detectOpenCodeInterface, getOpen
 import { openCodeConfig } from "./opencode-config.js";
 import { parseOpenCodeOutput, parseOpenCodeText, runOpenCode } from "../workers/opencode.js";
 import { createTaskWorktree, removeTaskWorktree } from "../git/worktree.js";
+import { inspectOpenCodeWorkspace } from "./opencode-preflight.js";
 import type { TaskWorktree } from "../git/worktree.js";
 
 const events = [
@@ -24,9 +25,10 @@ test("fake CLI readiness and real OS boundary: controlled cwd, external reads/wr
   const fixture = await realpath(await mkdtemp(join(tmpdir(), "jonas-opencode-unit-")));
   const source = join(fixture, "source");
   const bin = join(fixture, "bin");
+  let modelContext = 16384;
   const server = createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(req.url === "/api/tags" ? { models: [{ name: "fixture:local" }] } : { capabilities: ["completion"] }));
+    res.end(JSON.stringify(req.url === "/api/tags" ? { models: [{ name: "fixture:local" }] } : { capabilities: ["completion"], parameters: `num_ctx ${modelContext}` }));
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -51,11 +53,25 @@ test("fake CLI readiness and real OS boundary: controlled cwd, external reads/wr
     assert.equal((await checkOpenCode()).available, true);
     workspace = await createTaskWorktree({ path: source }, randomUUID());
     await symlink(source, join(workspace.path, "escape"));
-    await assert.rejects(runOpenCode("never run", source, { workspace }), /isolated/);
+    const before = (await execa("git", ["status", "--porcelain"], { cwd: workspace.path })).stdout;
+    await assert.rejects(runOpenCode("never run", source, { workspace }), /preflight/);
+    await assert.rejects(runOpenCode("never run", fixture, { workspace }), /preflight/);
+    const info = await inspectOpenCodeWorkspace(workspace.path, workspace);
+    assert.equal(info.canonicalCwd, workspace.path); assert.equal(info.repositoryRoot, workspace.path);
+    assert.equal(info.branch, workspace.branch); assert.equal(info.writable, true);
+    assert.equal((await execa("git", ["status", "--porcelain"], { cwd: workspace.path })).stdout, before);
     const result = await runOpenCode("literal $(touch NEVER) `test`", workspace.path, { workspace });
     assert.equal(result.success, true, JSON.stringify(result));
+    assert.equal(result.preflight?.repositoryRead, true); assert.equal(result.preflight?.temporaryWriteDelete, true);
+    assert.equal((await execa("git", ["status", "--porcelain"], { cwd: workspace.path })).stdout.includes("jonas-preflight"), false);
     assert.equal(await readFile(join(workspace.path, "value.txt"), "utf8"), "ok");
     assert.equal(await readFile(join(source, "value.txt"), "utf8"), "baseline");
+    modelContext = 4096;
+    assert.equal((await checkOpenCode()).error?.code, "context_mismatch");
+    const mismatch = await runOpenCode("must never infer on wrong context", workspace.path, { workspace });
+    assert.equal(mismatch.success, false); assert.equal(mismatch.failureKind, "infrastructure");
+    assert.match(mismatch.error!, /model context mismatch/);
+    modelContext = 16384;
     const installedFake = process.env.OPENCODE_BIN;
     const script = await readFile(installedFake, "utf8");
     await writeFile(installedFake, script.replace("1.2.27", "2.0.0"));

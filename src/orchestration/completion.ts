@@ -13,7 +13,7 @@ export class CompletionInvariantError extends Error {
 
 export function isVerifiedCodingExecution(result: ExecutionResult | undefined): boolean {
   const worker = result?.workerResult as { success?: boolean } | null;
-  return result?.success === true && result.workerStarted === true &&
+  return result?.success === true && result.workerStarted === true && result.failureKind !== "infrastructure" &&
     (result.route?.worker === "opencode" || result.route?.worker === "codex") &&
     worker?.success === true &&
     !!result.workspace && !!result.git && Array.isArray(result.git.changedFiles) &&

@@ -47,7 +47,8 @@
     "control-plane:test": "tsx --test src/control-plane/*.test.ts",
     "control-plane:e2e": "playwright test --config apps/control-plane/playwright.config.ts",
     "control-plane:db:test": "tsx src/control-plane/db-integration.ts",
-    "verifier:unit": "tsx --test src/verification/verifier.test.ts"
+    "verifier:unit": "tsx --test src/verification/verifier.test.ts",
+    "opencode:tools:test": "tsx src/test-opencode-tools.ts"
   },
   "engines": {
     "node": ">=22.13.0"

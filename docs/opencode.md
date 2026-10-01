@@ -10,7 +10,7 @@ pevná pravidla a oprávnění vlastní TypeScript. Repository coding nyní pou�
 
 | Doporučení | Policy |
 | --- | --- |
-| `local-coding` | Normalizuje category na coding, vyžaduje repository; OpenCode, pokud má risk low/medium a difficulty ≤ `LOCAL_CODING_MAX_DIFFICULTY` |
+| `local-coding` | Normalizuje category na coding, vyžaduje repository; OpenCode, pokud má risk low/medium a difficulty ≤ `LOCAL_CODING_MAX_DIFFICULTY`; prokázaná runtime/config infrastructure vede na waiting_human |
 | `strong-coding` | Normalizuje category na coding, vyžaduje repository; Codex |
 | `strong-general` | Antigravity pro |
 | `research` | Antigravity; původní volba flash/pro podle risk/difficulty |
@@ -34,7 +34,7 @@ nezaručuje dostupnost CLI. Ollama musí běžet s lokálním completion modelem
 
 | Proměnná | Default | Omezení |
 | --- | --- | --- |
-| `LOCAL_CODING_MODEL` | `LOCAL_CHIEF_MODEL`, jinak `qwen3.5:9b-q4_K_M` | Nainstalovaný lokální model; cloud odmítnut |
+| `LOCAL_CODING_MODEL` | `LOCAL_CHIEF_MODEL`, jinak `qwen3.5:9b-q4_K_M` | Lokální model s explicitním model-level `num_ctx`; `.env.example` doporučuje alias `qwen3.5:9b-q4_K_M-jonas-16k`; cloud odmítnut |
 | `OPENCODE_BIN` | `opencode` | Název v PATH nebo absolutní cesta |
 | `LOCAL_CODING_CONTEXT` | `16384` | 4096–16384 |
 | `LOCAL_CODING_TIMEOUT_MS` | `180000` | 1000–300000 ms |
@@ -62,6 +62,31 @@ bez deklarovaného JSON formátu se použije omezený non-TTY textový výstup.
 Model se musí objevit přes native Ollama discovery v izolované konfiguraci.
 Není přidaný custom provider SDK. Chybějící model vrací `model_missing`,
 nekompatibilní config `unsupported_cli`; bezpečnostní nastavení se neuvolňuje.
+
+### Skutečný kontext Ollama přes `/v1`
+
+OpenCode 1.18.33 používá OpenAI-compatible `/v1/chat/completions`. `limit.context`
+slouží k účtování kontextu v CLI; provider/model option `num_ctx` nezmění skutečný
+Ollama kontext. [Ollama doporučuje modelový alias](https://docs.ollama.com/api/openai-compatibility#setting-the-local-context-size)
+s explicitním `PARAMETER num_ctx`. Na ověřovaném hostu původní model běžel s
+4096 tokeny, přestože config uváděl 16384; reálný běh končil truncation.
+
+Z kořene projektu, po ruční instalaci základního modelu:
+
+```sh
+ollama create qwen3.5:9b-q4_K_M-jonas-16k -f examples/opencode.Modelfile
+LOCAL_CODING_MODEL=qwen3.5:9b-q4_K_M-jonas-16k npm run opencode:check
+LOCAL_CODING_MODEL=qwen3.5:9b-q4_K_M-jonas-16k npm run opencode:tools:test
+LOCAL_CODING_MODEL=qwen3.5:9b-q4_K_M-jonas-16k npm run opencode:tools:test -- --primitives
+```
+
+Do `.env` nastav `LOCAL_CODING_MODEL=qwen3.5:9b-q4_K_M-jonas-16k` a
+`LOCAL_CODING_CONTEXT=16384`. Alias používá existující lokální váhy, nepřepisuje
+základní model; Jonas OS jej sám nevytváří ani nestahuje. Pro jiný model či
+kontext uprav vlastní Modelfile a alias. Readiness i přímý adaptér kontrolují
+`/api/show.parameters`: explicitní `num_ctx` se musí rovnat `LOCAL_CODING_CONTEXT`.
+Chybějící/odlišný údaj je `context_mismatch`, nikoli úspěšná readiness; samotný
+`/api/ps` po jiném klientovi nestačí jako trvalý důkaz konfigurace.
 
 ## Execution a bezpečnost
 
@@ -92,13 +117,27 @@ Unsupported OS execution je odmítnuta. Nástroje nikdy neobdrží uživatelův 
 auth ani credentials environment; projektové/global plugins a config jsou
 izolované. Runtime se uklidí, úspěšný i neúspěšný task worktree zůstane.
 
+Před inferencí se navíc ověří supplied/canonical cwd, expected task worktree,
+Git root/větev a writable status. Ve stejném OS profilu proběhne čtení `.git`
+a exkluzivní temp write/read/delete uvnitř vlastního dočasného adresáře worktree.
+Do logu/resultu jdou pouze cesty a booleany, žádný obsah. Chybné cwd/root/branch
+se odmítne ještě před CLI/model invocation.
+
 ## Fallback a metadata
 
-Pokud před execution není dostupný OpenCode/Ollama/model nebo kompatibilní
-rozhraní/sandbox, policy zvolí Codex a uloží důvod. Codex/Antigravity mají původní
+Pokud před execution chybí OpenCode binary/Ollama/model, dosavadní policy může
+zvolit Codex a uloží důvod. Prokázaná chyba konfigurace/hranice (`configuration`,
+`unsupported_cli`, `sandbox_unavailable`, `context_mismatch`) však v executor
+pipeline zastaví způsobilý local-coding task jako infrastructure, zachová worktree
+a vede na waiting_human bez cloud fallbacku. Pure router policy se nemění. Codex/Antigravity mají původní
 execution-time health behavior; readiness pro ně nevolá model.
 
 Jakmile OpenCode invocation začne, failure/timeout/malformed output ukončí tento pokus.
+Známý runtime/config preflight failure a explicitní selhání inicializace/execution
+ripgrep se klasifikují jako infrastructure: žádný repair Chief, coding repair ani
+review, také po redelivery/human answer nad nezměněným výsledkem. ENOENT souboru,
+invalid arguments, externí cesta, permission policy a samotný terminal `length`
+nejsou automaticky infrastructure; bez dalšího důkazu zůstávají execution failure.
 Nový pokus smí autorizovat jen Chief a TypeScript v rámci min(maxAttempts,
 JONAS_OS_MAX_ATTEMPTS); může jít na Codex ve stejném worktree. Není inline
 provider fallback ani slepý queue retry. Repository jobs mají retryLimit 0.
@@ -119,8 +158,13 @@ Při chybějící veřejné zprávě navíc `eventTypes` (nejvýše 16 typů, d�
 nepoužijí jako náhrada. Explicitní error/incomplete a neúplný step selžou.
 JSON parser vyžaduje exit 0, netimeoutovaný úspěšný proces a konečný
 `step_finish.part.reason = stop`; veřejná `message` může být null.
-malformed, error nebo neúplný stream selže. Reasoning/tool input/output events
-se nepersistují. Text fallback vyžaduje exit 0, netimeoutovaný úspěšný proces a
+malformed, error nebo neúplný stream selže. Reasoning a libovolné tool input/output payloady se nepersistují. Bounded
+`toolDiagnostics` (nejvýše 32) obsahují event type, tool/status, rozpoznanou
+public category/code a code-owned zprávu do 500 znaků; pouze bezpečnou relativní
+repo cestu nebo pathScope bez externí cesty. Neznámý detail je vynechán. `eventTypes`
+a `terminalReasons` jsou bounded metadata i u běhů s veřejnou zprávou.
+Incomplete/error zůstane failure i při exit 0 či změněných souborech; failure report
+uvádí veřejný step reason a poslední rozpoznanou tool chybu, ne domnělou příčinu. Text fallback vyžaduje exit 0, netimeoutovaný úspěšný proces a
 výstup do 64 kB; prázdná zpráva je null; sessionId a usage jsou null. Thinking se nevyžaduje. Fallback
 se volí před invocation, nikoli po chybě JSON parseru. Verifier je pro oba formáty
 stejně povinný. Cloud model ID je null,
@@ -144,7 +188,7 @@ fallback před execution. Nové orchestration:test navíc ověřuje autorizovan�
 symlink escape a `.git` write, JSON/text parser, stderr help, odmítnutí
 nekompatibilního configu a timeout.
 
-`opencode:test` je jediný skutečný bounded OpenCode/Qwen smoke: vytvoří disposable
+`opencode:test` je skutečný bounded OpenCode/Qwen queue smoke: vytvoří disposable
 TypeScript Git repo a unikátní pg-boss queue. Před skutečným workerem kontroluje
 persistované `runs.routing` a `runs.workspace`, po něm uložený result. Reviewer je v tomto local smoke záměrně nedostupný,
 takže úspěšný pokus vede na waiting_human bez cloud inference. Upraví
@@ -166,8 +210,10 @@ uložená před inferencí a result po dokončení. Vlastní queue, task/run row
 worktree/branch a runtime byly odstraněné. Žádná Codex/Antigravity inference.
 To je historické ověření před přidáním nezávislého review. [Report oprav a ověření](opencode-milestone-report.md).
 
-Resolved config zachoval požadované context/output/options hodnoty; konkrétní
-účinnost každého provider resource option nebyla samostatně měřena. Ověření
+Historický resolved config zachoval context/output/options hodnoty, ale účinnost
+provider `num_ctx` nebyla tehdy měřena. Nová reprodukce odhalila, že přes `/v1`
+nefungoval; nepoužívané `num_ctx` options jsou odstraněné. Model-level kontrola
+a alias výše tento runtime předpoklad opravují. Ověření
 se vztahuje na tuto CLI/model/macOS kombinaci; jiná instalace musí projít readiness
 a vlastním smoke testem.
 
@@ -198,3 +244,9 @@ OpenCode 1.18.33 v reálném repository E2E emitovalo pouze step_start,
 tool_use a step_finish, bez text eventu. Není potvrzena jiná veřejná textová
 envelope; no-summary terminal fixture je skutečně pozorovaná.
 [Výsledky a omezení tohoto smoke](runtime-e2e-fixes-report.md).
+
+`opencode:tools:test` přímo volá stejný adaptér bez DB, queue, verifieru/review.
+Default ověří inspect → write → jediný `docs/smoke.md` → success true; `--primitives`
+spustí čtyři samostatné read/glob/write/read inference. Fixture i bezpečný report
+zůstávají k inspekci; test nevykonává cloud fallback a nemaže dirty worktree.
+[Diagnostika, ověření a jediný E2E](opencode-tool-reliability-report.md).

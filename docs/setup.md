@@ -237,7 +237,12 @@ limitů je v [lokálním coding setupu](opencode.md#konfigurace-a-readiness).
 Ověř instalovanou CLI přes `npm run opencode:check`; samotná desktop aplikace
 nenahrazuje CLI. Jonas OS nepoužívá uživatelův OpenCode config/auth a nestahuje
 provider packages. Adapter ověřuje požadovaný config/permissions a macOS OS boundary;
-nekompatibilní config nebo discovery bezpečně odmítne a policy zaznamená Codex fallback.
+discovery failure má dosavadní fallback, ale prokázaná configuration/CLI/sandbox/context
+chyba zastaví local-coding jako infrastructure bez cloud inference. OpenCode `/v1`
+nepřenáší `num_ctx`: vytvoř lokální alias přes `examples/opencode.Modelfile`, nastav
+`LOCAL_CODING_MODEL=qwen3.5:9b-q4_K_M-jonas-16k` a ověř shodu modelového
+`num_ctx` s `LOCAL_CODING_CONTEXT` podle uvedeného setupu. Automatický download ani
+úprava základního modelu neprobíhá.
 Migraci nullable `tasks.chief` a `runs.routing` aplikuje `npm run db:migrate`.
 
 Pro native fake reviewer CLI test je navíc potřeba C compiler (`cc`, na macOS

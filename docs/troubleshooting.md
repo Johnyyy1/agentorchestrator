@@ -240,3 +240,16 @@ OS regrese mají samostatné `npm run sandbox:test` mimo verifier. Žádný test
 nebyl přeskočen ani boundary uvolněná; úplná deterministická kontrola je
 `npm test` + `npm run sandbox:test` (a podle dopadu DB integrační sady).
 Samostatné `opencode:unit` i `reviewer:test` stále zahrnují své původní OS testy.
+
+### OpenCode tool chyby nebo incomplete při exit 0
+
+Neodvozuj success z exit 0 či vzniklého souboru. Prohlédni bounded `toolDiagnostics`
+a `terminalReasons`; `length` znamená neúplný krok, ne automaticky chybu sandboxu.
+`context_mismatch` v readiness znamená chybějící/odlišný model-level `num_ctx`.
+OpenCode 1.18.33 `/v1/chat/completions` ignoruje config `num_ctx`; samotný limit 16384
+může současně s Ollama runtime 4096 vést k truncation. Použij
+[lokální modelový alias](opencode.md#skutečný-kontext-ollama-přes-v1). Neuvolňuj externí
+filesystem či shell permissions. Cwd/root/branch nebo sandbox probe failure a explicitní
+ripgrep runtime chyba eskalují infrastructure a zachovají worktree bez coding repair.
+Unknown detail se z bezpečnostních důvodů neukládá; staré tool errors bez detailu
+nelze zpětně přesně vysvětlit. `opencode:tools:test` oddělí adaptér od orchestrace.

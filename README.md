@@ -109,7 +109,7 @@ Bez DB/inference lze UI prohlédnout přes `npm run control-plane:fixtures`
 
 | Capability | Worker |
 | --- | --- |
-| local-coding | OpenCode + Qwen, coding s repository, risk low/medium a difficulty ≤2 |
+| local-coding | OpenCode + Qwen, coding s repository, risk low/medium a difficulty ≤2; prokázaná runtime/config infrastructure vede na waiting_human |
 | strong-coding | Codex |
 | strong-general | Antigravity pro |
 | research | Antigravity |
@@ -117,7 +117,7 @@ Bez DB/inference lze UI prohlédnout přes `npm run control-plane:fixtures`
 | Bez doporučení | Původní router |
 
 Limit mění `LOCAL_CODING_MAX_DIFFICULTY` (1–3). High risk nebo vyšší difficulty
-použije Codex; non-coding nesmí použít OpenCode. Local readiness failure má
+použije Codex; non-coding nesmí použít OpenCode. Běžná local readiness unavailable failure má
 zaznamenaný fallback na Codex **před execution**. Po failure rozhoduje Chief o novém bounded pokusu; oprava může přejít na Codex
 ve stejném worktree. Nejde o fallback uvnitř jedné invocation. Oba coding workery sdílejí
 stejný worktree/verifier/Git/persistence pipeline.
@@ -172,3 +172,9 @@ macOS inbound omezení, Node guard a ověření popisuje
 [verifier loopback report](docs/verifier-loopback-report.md). Pro úplné
 deterministické regrese spusť `npm test` i `npm run sandbox:test`; macOS
 neumožňuje vnořené sandbox_apply.
+
+OpenCode `/v1` vyžaduje modelový alias s explicitním `num_ctx`; samotný CLI
+context limit nestačí. [Lokální setup](docs/opencode.md#skutečný-kontext-ollama-přes-v1)
+a `npm run opencode:tools:test` ověřují přímý adaptér bez cloud inference.
+Prokázaná local-worker configuration/sandbox/context chyba vede na waiting_human
+se zachovaným worktree a bez automatického coding repair/cloud fallbacku.
