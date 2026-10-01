@@ -1,7 +1,7 @@
 # Spolehlivost nezávislého Antigravity reviewera
 
-Stav k 1. 10. 2026: implementace, přímé reálné GOOD/BAD reviews a deterministické
-regrese prošly. Jediný repository E2E bude vyhodnocen samostatně až po této gate.
+Stav k 2. 10. 2026: implementace, přímé reálné GOOD/BAD reviews, deterministické
+regrese i právě jeden repository E2E prošly. E2E skončil APPROVE / COMPLETED.
 Změna navazuje na `codex/opencode-tool-reliability`, ověřené commity `d91189bf`
 a `b63d92c5`. OpenCode worker, Ollama model/context, verifier, TaskSpec routing,
 repair rozhodování a Control Plane design se nemění.
@@ -150,3 +150,96 @@ nezpřístupňuje; počet invocations není vydávaný za počet interních requ
 Evidence veřejných normalized results: `/tmp/jo-review-direct-flat.jsonl`;
 format discovery diagnostics: `/tmp/jo-review-direct-results.jsonl` a
 `/tmp/jo-review-direct-final.jsonl`. Credential kopie v těchto souborech nejsou.
+
+
+## Právě jeden finální repository E2E
+
+E2E začal 1. 10. 2026 ve 23:59:24 CEST a skončil 2. 10. v 00:01:54 CEST.
+Běžel až po validním GOOD/BAD a regresích, z commitu `f3a658d9` na větvi
+`codex/opencode-tool-reliability`. Žádný další repository task, repair inference
+nebo druhý review pokus nebyl spuštěný.
+
+| Evidence | Skutečný výsledek |
+| --- | --- |
+| Task ID | `485e34b5-c3f3-4b29-9d1f-353478d33f55` |
+| Run ID | `3d20d133-f27f-4c57-8f25-f9a8c66dccae`, attempt 1 / maxAttempts 1 |
+| Chief | qwen3.5:9b-q4_K_M, create_task, coding, local-coding, difficulty 1, risk low; 38839 ms |
+| Worker | OpenCode 1.18.33; qwen3.5:9b-q4_K_M-jonas-16k, 58173 ms, success true, terminal stop |
+| Routing | requested local-coding, selected opencode, fallbackReason null |
+| Changed files | přesně `docs/jonas-os-e2e-smoke-5.md`, nový untracked soubor |
+| test | PASS, exit 0, 4293 ms |
+| typecheck | PASS, exit 0, 2556 ms |
+| lint / build | SKIPPED: Script is not defined; žádné tvrzení o jejich provedení |
+| Reviewer | Antigravity / providerFamily google, model unknown/null, tier pro |
+| Review ID | `dd3c8be9-11da-4f4d-a654-501c61005518` |
+| Public CLI output | exit 0, SUCCESS, structured_output object, response + metadata |
+| Safe review diagnostics | 30075 ms, timedOut false, signal null, modelOutputReceived true, parse/schema error null |
+| Verdict | approve, severity none, findings [] |
+| Final task state | completed; žádná eskalace |
+| Final Result | Persistovaný Control Plane read model: completed run, veřejný worker summary, workspace/Git, 1 changed file, 4 checks, matching independent APPROVE; reason/decision null |
+
+Reviewer summary potvrzuje požadovanou vysvětlující větu, splněná acceptance
+criteria, žádné unrelated files a verifier PASS. Worker nejdřív zkusil read
+zamýšleného nového souboru (not_found), potom write. Tento benigní not_found
+není porucha sandboxu; execution skončilo úspěšně. Worker veřejně uvedl, že sám
+netestoval dokumentační změnu; následný deterministický verifier skutečně provedl
+test a typecheck a jejich výsledky jsou uložené samostatně.
+
+Výsledný soubor má obsah:
+
+```md
+# Jonas OS End-to-End Smoke Test
+
+This file was created by the Jonas OS end-to-end smoke test.
+```
+
+Worktree zůstává pro inspekci:
+`/Users/jonas/.jonas-os/worktrees/485e34b5-c3f3-4b29-9d1f-353478d33f55`,
+branch `jonas-os/task-485e34b5-c3f3-4b29-9d1f-353478d33f55`.
+Task výsledek se automaticky nemergoval do původního checkoutu.
+E2E report `/tmp/jo-e2e-5-L4hztz/report.json` obsahuje snapshot persisted
+Task/Run/Review/events i Final Result; runtime auth/hidden reasoning v něm nejsou.
+
+## Původní checkout a obnova AGENTS.md
+
+Před i po E2E je původní checkout na main, HEAD
+`3898426b9ae85c32c1704cf901ce0ce9859d3594`, s jediným statusem ` M AGENTS.md`.
+Smokefile v původním checkoutu nevznikl. Implementace používá izolovaný worktree
+na codex/opencode-tool-reliability; foreign worktrees nebyly odstraněné.
+
+Před stashem pouze AGENTS.md vznikly byte backup, git diff --binary, status
+snapshot, HEAD a SHA-256. Apply použil vlastní stash SHA. Skutečné cmp byte
+kopie, binárních patch souborů a status souborů prošly; HEAD i SHA byly shodné.
+Vlastní stash se odstranil až po těchto důkazech. Žádný reset --hard, git clean
+ani force operace.
+
+| Restoration proof | Výsledek |
+| --- | --- |
+| byteCmp / diffCmp / statusCmp | true / true / true |
+| headUnchanged | true |
+| stashDroppedAfterProof | true |
+| AGENTS.md SHA-256 před/po | cb7f056226669cf21c040d7c2d8f14f70c51dbb3ae191b4458dac4de0b49ca60 |
+| Binary patch SHA-256 před/po | eab08f5ba2b1f45179a2a0e82b1fc88d606ba75dcaf71665c04c8d5a9ba0b17d |
+| Backups | /tmp/jo-e2e-5-L4hztz/AGENTS.md.original, AGENTS.md.patch, status.txt a restored protějšky |
+
+## Konečné počty inference za tento milník
+
+| Provider / účel | Skutečné model CLI/API invocations | Pozorované generation requests |
+| --- | --- | --- |
+| Local Chief, E2E | 1 | 1 /api/chat |
+| OpenCode/Qwen, E2E | 1 | 3 /v1/chat/completions |
+| Local repair Chief | 0 | 0 |
+| Antigravity přímé fixtures | 4: dvě format-discovery GOOD + valid GOOD/BAD | Interní cloud request count CLI nezpřístupňuje |
+| Antigravity E2E | 1 | Interní cloud request count CLI nezpřístupňuje |
+| Codex worker / reviewer | 0 / 0 | 0 |
+
+Navíc dva původní print attempts odmítl schema preflight před model output.
+Nezapočítávají se jako model inference. Celkem Antigravity **5** model-review CLI
+invocations a **2** preflight rejects; cloud generation count není vydávaný za
+5. Lokální log delta obsahuje přesně **4** generation requests (Chief 1 + Qwen 3),
+uložené v `/tmp/jo-e2e-5-L4hztz/ollama-generation-lines.txt`. Fake regressions,
+version/help/models/readiness a oprava dokumentace další reálnou inferenci nepřidaly.
+
+Žádný další milestone nebyl zahájený. E2E prošel s původním workerem, 16k modelem,
+verifierem, semantic routingem a běžným completion invariantem; nezávislé
+review nebylo nahrazené fake výstupem ani vynucenou approval.
