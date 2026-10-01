@@ -59,6 +59,20 @@ test("parser bounds streams and rejects explicit incomplete state, later starts 
   assert.equal(unrelated.message, "Function updated.");
 });
 
+// Exact relevant step envelopes captured from the one real repository E2E.
+// OpenCode 1.18.33 emitted no public text event in that execution.
+test("observed OpenCode 1.18.33 terminal envelopes succeed without a public summary", async () => {
+  const observed = await readFile(new URL("./fixtures/opencode-1.18.33-no-summary.jsonl", import.meta.url), "utf8");
+  const parsed = parseOpenCodeOutput(observed, 0, "ollama/qwen3.5:9b-q4_K_M", 1);
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.message, null);
+  assert.equal(parsed.sessionId, "ses_f0906717affeOZNWUI1MZFNE4N");
+  assert.deepEqual(parsed.usage, { inputTokens: 9013, outputTokens: 518, reasoningTokens: 0 });
+  assert.equal(parsed.eventTypes?.step_finish, 3);
+  const truncated = observed.trim().split("\n").slice(0, -1).join("\n");
+  assert.equal(parseOpenCodeOutput(truncated, 0, "fixture", 1).success, false);
+});
+
 test("capability detection and bounded text fallback fail safely", () => {
   assert.deepEqual(detectOpenCodeInterface(" -m, --model VALUE\n --agent AGENT\n --format [choices: default, json]"),
     { outputFormat: "json", agentFlag: true, titleFlag: false });

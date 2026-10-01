@@ -9,7 +9,7 @@ import { localAgentName } from "../local/opencode-config.js";
 import { openCodeSandboxProfile } from "../local/opencode-sandbox.js";
 
 export type OpenCodeResult = {
-  success: boolean; exitCode: number; message: string | null; sessionId: string | null;
+  success: boolean; exitCode: number; message?: string | null; sessionId: string | null;
   model: string; usage: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } | null;
   durationMs: number; stderr: string; error: string | null; timedOut: boolean;
   eventTypes?: Record<string, number>;

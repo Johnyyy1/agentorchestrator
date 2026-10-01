@@ -110,6 +110,7 @@ Migrace `0002_absurd_madame_masque.sql` přidává nullable JSON `tasks.chief`
 `runs.result` uchovává worker result, routing, workspace, verification a Git diff
 metadata. OpenCode result obsahuje success, exitCode, public message, sessionId,
 explicit model, whitelisted token counts, durationMs, bounded stderr a error.
+Typ message je volitelný/nullable; adaptéry při absenci reportu vracejí null.
 Při chybějící veřejné zprávě navíc `eventTypes` (nejvýše 16 typů, délka typu
 64 znaků), bez raw streamu nebo thinking. Parser má limity 2 MiB stream,
 4096 řádků, 256 kB/event a 64 kB zpráva. Veřejný text bere pouze z
@@ -190,3 +191,8 @@ a nezávislé approve. Chybějící veřejný report tuto evidence nenahrazuje
 ani neznehodnocuje; Control Plane zachová „No final worker summary was captured.“
 Bez nové inference a bez vymyšlené zprávy. LOCAL_CODING_* a OPENCODE_BIN,
 routing tabulka i attempt/skip policy zůstávají stejné.
+
+OpenCode 1.18.33 v reálném repository E2E emitovalo pouze step_start,
+tool_use a step_finish, bez text eventu. Není potvrzena jiná veřejná textová
+envelope; no-summary terminal fixture je skutečně pozorovaná.
+[Výsledky a omezení tohoto smoke](runtime-e2e-fixes-report.md).

@@ -211,3 +211,13 @@ vlastní krátký temp adresář, nikoli cestu pod worktree. `listen EPERM` zna�
 omezení sandboxu: instalovaný Codex launcher musí podporovat
 `--allow-unix-socket`, omezený na vlastní runtime. Síť se tím nepovoluje.
 Ověření bez inference: `npm run verifier:unit`. Tests se nepřeskakují.
+
+## Verifier: HTTP fixture `listen EPERM 127.0.0.1`
+
+Po opravě tsx IPC může `npm test` spustit assertions a následně selhat na
+HTTP fixture serverech v `src/local/ollama.test.ts`. Verifier TCP síť blokuje;
+krátký Unix socket runtime tento TCP kontrakt nemění. Úspěch `npm test` mimo
+sandbox není důkazem PASS ve verifieru. Task nesmí dostat completed ani review
+přes selhání; zachovej logs/worktree a řeš kompatibilitu fixture testů se
+sandboxem v samostatné změně. Nepovoluj síť ani nepřeskakuj testy jen pro smoke.
+[Skutečný výsledek jediného reálného E2E](runtime-e2e-fixes-report.md).
