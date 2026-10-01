@@ -9,8 +9,10 @@
 5. Task/run skončí `completed` nebo `failed`, výsledek zůstane v DB.
 
 Spusť `npm run worker`. Úkol lze zařadit i bez consumeru, zůstane `queued`.
-Není k dispozici dashboard, HTTP API ani běžný CLI příkaz pro rušení,
-opětovné spuštění nebo schvalování úkolů.
+Lokální UI spustíš `npm run control-plane:dev` na 127.0.0.1:3000.
+Overview deleguje cíl přes Chief, Tasks ukazuje lifecycle a Decisions umožňuje
+answer/resume nebo potvrzované abandon waiting_human tasku. Obecný rerun či
+rušení běžícího workeru nejsou podporované. [Control Plane](control-plane.md).
 
 ## Přímé zadání
 

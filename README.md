@@ -7,7 +7,7 @@ trvalé fronty `pg-boss` a předá ho Codexu, Antigravity CLI nebo lokálnímu O
 omezené opravy přes Chief, nezávislé review a durable lidské eskalace.
 
 Projekt je určený pro vývojáře a lokální použití. Ovládá se přes TypeScript API
-a [spustitelné příklady](examples/). Nemá webové UI ani HTTP API. Repository
+a [lokální Control Plane](docs/control-plane.md) nebo [spustitelné příklady](examples/). Repository
 coding má bounded repair/review smyčku; další úkol po úspěchu se neplánuje. Mastra je zatím pouze prázdný inicializační modul.
 
 ## Co potřebuješ
@@ -57,6 +57,24 @@ První příklad volá skutečný Codex v režimu `read-only` a může čerpat k
 `acceptanceCriteria` jsou instrukce pro model, text odpovědi se automaticky
 neporovnává s očekávanou hodnotou.
 
+
+## Lokální Control Plane
+
+Po základním setupu spusť `npm run control-plane:dev` a otevři
+[127.0.0.1:3000](http://127.0.0.1:3000). Overview, Projects, Tasks, Decisions,
+Agents a Activity čtou skutečná data a umožňují delegování přes Chief,
+answer/resume i potvrzované abandon. Pro vykonávání úkolů nech zvlášť běžet
+`npm run worker`; samotné UI consumer nespouští.
+
+```sh
+npm run control-plane:build
+npm run control-plane:start
+```
+
+Bez DB/inference lze UI prohlédnout přes `npm run control-plane:fixtures`
+(explicitní simulace v paměti). [Setup, bezpečnost, limity a testy](docs/control-plane.md),
+[report ověření](docs/control-plane-report.md).
+
 ## Dokumentace
 
 | Dokument | Obsah |
@@ -68,6 +86,7 @@ neporovnává s očekávanou hodnotou.
 | [Řešení problémů](docs/troubleshooting.md) | Diagnostika fronty, databáze, CLI a verifikace |
 | [Opravy a eskalace](docs/repair-loop.md) | Lifecycle, nezávislé review, maxAttempts, lidské CLI a restart |
 | [Lokální OpenCode](docs/opencode.md) | Capability policy, lokální setup, fallback a security boundary |
+| [Control Plane](docs/control-plane.md) | Lokální UI, routes, delegování, rozhodnutí, health a fixtures |
 | [AGENTS.md](AGENTS.md) | Pokyny pro LLM včetně povinné aktualizace dokumentace |
 
 ## Současná omezení

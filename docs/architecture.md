@@ -214,3 +214,19 @@ po jeho odpovědi Chief rozhoduje znovu a TypeScript vynutí strong-coding.
 Approve může dokončit task jen s worker success a úspěšnými checks. Reviewer
 nemůže schválit selhání verifieru. Zod review schema vlastní konzistenci
 verdict/severity/findings/otázky; DB uchovává concise veřejné findings bez traces.
+
+## Lokální Control Plane
+
+`apps/control-plane` je samostatný Next App Router workspace. Server components
+čtou Zod DTO z `src/control-plane`; bulk last-run lookup a bounded SQL projekce
+oddělují seznamy od logů. Task/run/review/escalation/events schema se nemění.
+UI mutations pouze validují lokální HTTP vstup a volají planGoal/submitDecision,
+answerEscalation a abandonTask. Transaction a status transitions nadále vlastní
+engine. Browser nikdy neurčuje workspace filesystem path, shell ani status.
+
+Readiness běží bez inference v coalesced 20s procesní cache. Cloud binary
+presence je unknown, nikoli důkaz auth. Routes se obnovují pollingem 4/15s
+podle activity a browser visibility. Projects jsou hash normalizovaného
+repository.path, bez nové tabulky či semantic memory. Host/Origin kontrola,
+loopback binding, strict body schema, bounded/redacted plain text a request-ID
+cache vymezují lokální bezpečnostní hranici. [Detailní kontrakty a limity](control-plane.md).

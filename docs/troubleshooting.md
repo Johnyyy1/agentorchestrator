@@ -150,3 +150,25 @@ npm run escalation:answer -- <escalation-UUID> "Upřesnění rozhodnutí."
 Answer musí cílit na open eskalaci; resolved/cancelled či prázdná odpověď se odmítá.
 Při enqueue failure zůstává open/waiting_human, transakce nepersistuje půl výsledku.
 Worktree nikdy automaticky nemaž; [podrobné limity a recovery](repair-loop.md).
+
+## Control Plane
+
+- **Database unavailable:** ověř root `.env`, PostgreSQL a existující migrace.
+  `docker compose exec postgres pg_isready -U jonas -d jonas_os`. Build může
+  uspět i bez DB; není to důkaz její readiness.
+- **Task zůstává queued:** web neprovozuje consumer. Spusť zvlášť `npm run worker`;
+  tím povolíš skutečné worker invocation podle routing policy.
+- **Cloud lane unknown:** CLI existuje, ale health nespouští auth/model test.
+  Přihlášení nastav podle provider setupu.
+- **Chybí repository v selectoru:** V1 ho odvozuje z persisted task.repository;
+  první context zadej existujícím API/příkladem.
+- **Submission selhala:** prohlédni pending Tasks před opakováním. Stávající
+  createTask může pending row uchovat. Answer enqueue failure rollbackuje
+  answer i state; reload Decisions ukáže source of truth.
+- **403:** otevři přímo http://127.0.0.1:3000 nebo localhost, bez proxy/custom Host.
+  Cross-site mutace nejsou podporované.
+- **Fixture banner:** běží explicitní simulace, nikoli tvoje DB. Ukonči proces
+  a použij `npm run control-plane:dev` bez CONTROL_PLANE_FIXTURES=1.
+- **Port je obsazený:** `PORT=3001 npm run control-plane:dev`.
+
+[Podrobnosti a známé limity](control-plane.md), [ověření milestone](control-plane-report.md).

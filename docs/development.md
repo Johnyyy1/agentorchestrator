@@ -4,6 +4,8 @@
 
 | Cesta | Účel |
 | --- | --- |
+| apps/control-plane/ | Next App Router, UI primitives, server bridge, HTTP routes a Playwright smoke |
+| src/control-plane/ | DTO, read modely, redakce, health cache, validované mutace a fixtures |
 | src/tasks/ | Zod TaskSpec, DB rows, createTask |
 | src/router/ | Legacy + capability route, recommendation a readiness |
 | src/workers/ | CLI wrappers a jeden implementation/verifier pokus |
@@ -23,14 +25,25 @@
 | examples/ | Spustitelné příklady a vstupní JSON |
 
 TypeScript ESM (type module, module nodenext), source importy s `.js`, běh
-přes tsx. Typecheck nic neemituje. Není build, lint, dev server ani deploy.
+přes tsx. Typecheck nic neemituje. Engine nemá build ani deploy; webový workspace má vlastní
+typecheck, lint, dev/start a production build. Root TS kontrola vynechává apps,
+frontend typecheck kontroluje UI i jeho sdílené TS importy.
 
 ## Všechny npm příkazy
 
 | Příkaz (`npm run …`) | Závislosti a účinky |
 | --- | --- |
+| control-plane:dev | Lokální web na 127.0.0.1:3000; načte root .env, nespouští worker |
+| control-plane:fixtures | Explicitní in-memory development UI, fake služby, bez DB/inference |
+| control-plane:build | Produkční Next build; bez DB/inference |
+| control-plane:start | Built web na 127.0.0.1:3000; bez automatického consumeru |
+| control-plane:typecheck | Frontend a sdílené serverové importy |
+| control-plane:lint | ESLint UI + src/control-plane |
+| control-plane:test | Pure DTO/activity/query/security/mutation/cache testy, fake Chief |
+| control-plane:db:test | Vlastní DB rows + cleanup, SQL/read-model integrace, žádný consumer |
+| control-plane:e2e | Playwright Chromium + izolovaný fixture dev server :3107, skutečné screenshoty |
 | typecheck | Kontrola TS včetně examples; bez DB/modelů |
-| test (`npm test`) | chief:unit + router:test + capability-router:test + opencode:unit + repair:unit + reviewer:test; bez reálné DB/modelů |
+| test (`npm test`) | chief:unit + router:test + capability-router:test + opencode:unit + repair:unit + reviewer:test + control-plane:test; bez reálné DB/modelů |
 | router:test | Routovací příklady; bez AI/DB |
 | chief:unit | node:test schémat/bridge a local HTTP fixtures; bez inference |
 | db:generate | Generuje migrace; config vyžaduje DATABASE_URL |
@@ -113,3 +126,11 @@ Reviewer unit test skutečně odmítá original/worktree/symlink writes a shell
 execution. Readiness --help v izolovaném runtime nevolá model. Reálná cloud
 review inference se v regresích nespouští; auth a provider JSON envelope jiné
 CLI verze musí být ověřené zvlášť. [Aktuální report](repair-loop-report.md).
+
+## Control Plane QA
+
+[Setup a přesné příkazy](control-plane.md#development-fixtures-a-testy),
+[aktuální report](control-plane-report.md). Screenshoty browser smoke jsou
+v `docs/control-plane/`; fixture banner rozlišuje simulaci od reálné DB.
+Testy nepoužívají cloud ani lokální modelovou inferenci. Production build
+se ověřuje zvlášť od lint/typecheck a fixture browser smoke.

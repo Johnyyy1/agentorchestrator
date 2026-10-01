@@ -4,7 +4,7 @@
   "description": "Local task orchestrator with a PostgreSQL queue, Codex/Antigravity workers and an Ollama planner",
   "main": "index.js",
   "scripts": {
-    "test": "npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit && npm run repair:unit && npm run reviewer:test",
+    "test": "npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:unit && npm run repair:unit && npm run reviewer:test && npm run control-plane:test",
     "codex:test": "tsx src/test-codex.ts",
     "agy:test": "tsx src/test-antigravity.ts",
     "router:test": "tsx src/test-router.ts",
@@ -31,7 +31,16 @@
     "escalations:list": "tsx src/escalations/cli.ts list",
     "escalation:answer": "tsx src/escalations/cli.ts answer",
     "task:abandon": "tsx src/escalations/cli.ts abandon",
-    "repair:smoke": "tsx src/test-repair.ts"
+    "repair:smoke": "tsx src/test-repair.ts",
+    "control-plane:dev": "tsx src/control-plane/launcher.ts dev",
+    "control-plane:fixtures": "tsx src/control-plane/launcher.ts fixtures",
+    "control-plane:build": "npm run build --workspace @jonas-os/control-plane",
+    "control-plane:start": "tsx src/control-plane/launcher.ts start",
+    "control-plane:typecheck": "npm run typecheck --workspace @jonas-os/control-plane",
+    "control-plane:lint": "npm run lint --workspace @jonas-os/control-plane",
+    "control-plane:test": "tsx --test src/control-plane/*.test.ts",
+    "control-plane:e2e": "playwright test --config apps/control-plane/playwright.config.ts",
+    "control-plane:db:test": "tsx src/control-plane/db-integration.ts"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -48,11 +57,15 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
     "mastra": "^1.31.4",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3"
-  }
+  },
+  "workspaces": [
+    "apps/control-plane"
+  ]
 }

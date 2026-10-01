@@ -252,3 +252,18 @@ Limit `JONAS_OS_MAX_ATTEMPTS=3` znamená nanejvýš tři pokusy včetně prvníh
 TaskSpec může stanovit nižší limit. Chief ani resume cap nezvyšují.
 LOCAL_CODING_*/OPENCODE_BIN a původní capability eligibility jsou beze změny.
 [CLI lidských eskalací a restart](repair-loop.md).
+
+## Control Plane
+
+Root `npm ci` instaluje i webový workspace (Next.js 16.3.8, React 19.3, Tailwind 4).
+Po existujících migracích spusť `npm run control-plane:dev`; web binduje pouze
+na 127.0.0.1:3000. Konfigurace se načítá z kořenové `.env`. DB a modely se
+automaticky nestartují. Pro vykonávání úkolů potřebuješ samostatný `npm run worker`.
+Lokální produkční režim: `npm run control-plane:build`, potom
+`npm run control-plane:start`. Jiný port zvol `PORT=3001 npm run control-plane:start`.
+
+`CONTROL_PLANE_FIXTURES` je development/test přepínač: výchozí 0, explicitní
+`npm run control-plane:fixtures` nastaví 1 a používá jen in-memory data/fake
+služby. V production je hodnota 1 odmítnutá. Pro běžné používání ji neaktivuj.
+Zbytek provider konfigurace včetně LOCAL_CODING_*/OPENCODE_BIN zůstává beze změn.
+[Routes, používání, bezpečnost a limity](control-plane.md).
