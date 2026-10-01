@@ -36,7 +36,7 @@ nezaručuje dostupnost CLI. Ollama musí běžet s lokálním completion modelem
 | --- | --- | --- |
 | `LOCAL_CODING_MODEL` | `LOCAL_CHIEF_MODEL`, jinak `qwen3.5:9b-q4_K_M` | Lokální model s explicitním model-level `num_ctx`; `.env.example` doporučuje alias `qwen3.5:9b-q4_K_M-jonas-16k`; cloud odmítnut |
 | `OPENCODE_BIN` | `opencode` | Název v PATH nebo absolutní cesta |
-| `LOCAL_CODING_CONTEXT` | `16384` | 4096–16384 |
+| `LOCAL_CODING_CONTEXT` | `16384` | 4096–16384, musí odpovídat explicitnímu model-level `num_ctx` |
 | `LOCAL_CODING_TIMEOUT_MS` | `180000` | 1000–300000 ms |
 | `LOCAL_CODING_MAX_DIFFICULTY` | `2` | 1–3, včetně hranice |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Sdílená validovaná loopback konfigurace Chief |

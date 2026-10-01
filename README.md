@@ -178,3 +178,7 @@ context limit nestačí. [Lokální setup](docs/opencode.md#skutečný-kontext-o
 a `npm run opencode:tools:test` ověřují přímý adaptér bez cloud inference.
 Prokázaná local-worker configuration/sandbox/context chyba vede na waiting_human
 se zachovaným worktree a bez automatického coding repair/cloud fallbacku.
+
+[Reálné ověření OpenCode tool reliability](docs/opencode-tool-reliability-report.md):
+read/glob/write a skutečný repository worker/verifier prošly; jediný nový E2E
+zůstal waiting_human kvůli neúspěšné Antigravity review invocation, bez verdictu.

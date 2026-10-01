@@ -134,3 +134,111 @@ Evidence: `jo-opencode-tools-VFc5zz/report.json`. Vícekrokový glob zůstává 
 volbou, timeout/krokový cap se nezvětšuje. Regrese navíc kontroluje, že zotavená
 search executable chyba nepřeklasifikuje pozdější model truncation na infrastructure,
 i když success event nastane až za limitem persistovaných diagnostics.
+
+## Právě jeden nový repository E2E
+
+OpenCode milestone dosáhl reálného dodání požadovaného souboru a verifier PASS.
+**Celý E2E nedosáhl APPROVE/COMPLETED:** jediná Antigravity review invocation
+selhala bez platného verdictu. Nebyl spuštěn druhý task, druhý worker/repair,
+druhé review ani další milestone. Nejde o request_changes ani vynucenou approval.
+
+| Údaj | Skutečný uložený výsledek |
+| --- | --- |
+| Task ID | `0cf3e792-6329-49cd-b40d-5681a8e99d97` |
+| Repository | `/Users/jonas/jonas-os` |
+| Base branch/commit | `codex/opencode-tool-reliability`, `d91189bf1ebb4cc861f9ccf6dd1d029a2d29eea5` |
+| Chief | `qwen3.5:9b-q4_K_M`, create_task, coding/local-coding, difficulty 1, low risk, maxAttempts 1; skutečný výstup se nepřepisoval |
+| Route/model | OpenCode 1.18.33, `ollama/qwen3.5:9b-q4_K_M-jonas-16k`, fallback null |
+| Preflight | supplied/canonical cwd == expected task worktree == Git root; správná UUID větev, writable/read/temp write-delete true |
+| Tool sequence | read target error/not_found → glob completed v repository → write target completed → read target completed |
+| Přesná nová read chyba | První read mířil na dosud neexistující `docs/jonas-os-e2e-smoke-4.md`. Public error signature byla not_found, žádná permission/sandbox denial. Následný read po vytvoření prošel. Toto není důkaz stejné příčiny historických tool chyb. |
+| Event counts | 4 step_start, 4 step_finish, 4 tool_use, 2 text; reasons tool-calls/tool-calls/tool-calls/stop |
+| Worker result | success true, exit 0, timeout false, error null; public report zachovaný; session `ses_f06b6afc7ffehgvnTS7x9uVJu8` |
+| Usage/duration | input 16167, output 998, reasoning 0; adaptér 116102 ms |
+| Run | `9f2337d0-80a9-415c-a1d7-ace1540d61df`, attempt 1, completed, failureKind null |
+| Changed files | pouze `docs/jonas-os-e2e-smoke-4.md`; žádný jiný tracked/untracked diff |
+| test | PASS, npm test, exit 0, 4351 ms |
+| typecheck | PASS, npm typecheck, exit 0, 2925 ms |
+| lint/build | oba SKIPPED, root script absent, exitCode null; nejsou PASS |
+| Verifier aggregate | success true, failureKind null; žádná změna verifieru |
+| Antigravity review | provider family Google, model ID unknown/null, jediná invocation; status failed, verdict/result null |
+| Review row/error | `9eec6b48-234d-4646-b695-76b6eeba4cc0`; `Review invocation failed or returned invalid structured output.` |
+| Task state | waiting_human, orchestration phase human |
+| Escalation | review, `264ad66d-74b2-4c8c-9007-f0d1210aeaa2`; žádná další review/worker invocation |
+| Final Result | Persistovaný Control Plane read model obsahuje veřejný worker report, completed run, jeden changed file, checks, failed review a open human decision. Task je waiting_human; schválený completed Final Result nevznikl. Read model nemá samostatný lifecycle status. |
+| Retained worktree | `/Users/jonas/.jonas-os/worktrees/0cf3e792-6329-49cd-b40d-5681a8e99d97` |
+
+Glob inspekce předchází prvnímu write; původní new-file read není vydávaný za
+úspěšnou inspekci. Následný read ověřil vytvořený soubor. Obsah uvádí, že soubor
+vytvořil Jonas OS end-to-end smoke test za účelem ověření repository writes.
+Ollama server v těchto čtyřech worker krocích vykazuje skutečný context 16384;
+poslední dva prompty měly 4474/4695 tokenů, release truncated=0. Původní runtime
+4096 by pro tyto kroky nestačil.
+
+Normal flow zůstal planGoal → submitDecision → PostgreSQL/unikátní pg-boss queue →
+registerTaskWorker/processTaskJob → executeTask/OpenCode → nezměněný verifier →
+nezávislé runReview/Antigravity. Dependencies byly explicitně provisionované pouze
+do ignored node_modules task worktree. Worker necommitnul/pushnul/mergoval.
+
+Reviewer adapter tehdy uloží jen obecnou bezpečnou chybu a odstraní vlastní runtime;
+konkrétní CLI/public error a cloud request count nejsou dostupné. Invocation trvala
+přibližně 71 ms podle review row timestamps, což samo neprokazuje příčinu ani počet
+cloud generací. Report nevymýšlí auth/sandbox/schema vysvětlení a nepřevádí failure
+na APPROVE. Read-only readiness (--help) před invocation skutečně prošla.
+
+## Original checkout a přesná obnova AGENTS.md
+
+Original main HEAD před/po je `3898426b9ae85c32c1704cf901ce0ce9859d3594`.
+Před/po jediná změna ` M AGENTS.md`; smoke-4 nevznikl v original checkoutu.
+Original `.env` se neměnil; ověřování použilo explicitní process environment
+`LOCAL_CODING_MODEL=qwen3.5:9b-q4_K_M-jonas-16k`. Po nasazení nové větve nastav
+modelový alias podle setupu. Větev není automaticky sloučená do main.
+
+Před stashem pouze AGENTS.md vznikly byte copy, binary patch, status snapshot,
+HEAD a SHA-256. Restore použil vlastní stash SHA; skutečné cmp bytes/diff/status,
+hash a HEAD porovnání prošly. Vlastní stash se odstranil až po přesném důkazu obnovy.
+Žádný reset --hard, git clean ani force operace. Task worktree se zachoval.
+
+| Důkaz | Před i po / výsledek |
+| --- | --- |
+| AGENTS.md SHA-256 | `cb7f056226669cf21c040d7c2d8f14f70c51dbb3ae191b4458dac4de0b49ca60` |
+| Binary diff SHA-256 | `eab08f5ba2b1f45179a2a0e82b1fc88d606ba75dcaf71665c04c8d5a9ba0b17d` |
+| byteCmp / diffCmp / statusCmp | true / true / true |
+| headUnchanged / stashDroppedAfterProof | true / true |
+| E2E report/backups | `/tmp/jo-e2e-4-bohe63/report.json` a vlastní byte/patch/status soubory |
+
+## Skutečné inference počty celého tohoto úkolu
+
+| Provider/fáze | Adapter/CLI invocations | Doložené generation HTTP requests |
+| --- | --- | --- |
+| OpenCode, před E2E | 12 | 34 `/v1/chat/completions` |
+| Chief v jediném E2E | 1 | 1 `/api/chat` |
+| OpenCode v jediném E2E | 1 | 4 `/v1/chat/completions` |
+| Repair Chief | 0 | 0 |
+| Antigravity review | 1, failed | cloud generation count neověřitelný; nesmí být vydávaný za 0 ani 1 |
+| Codex worker/reviewer | 0 / 0 | 0 |
+
+Celkem **14 skutečných lokálních adapter invocations a 39 doložených Ollama
+generation requests**, z toho 38 OpenCode a 1 Chief. Právě 1 neúspěšný cloud-review
+CLI pokus; počet skutečných cloud generací není uložený. HTTP součty vycházejí
+ze server log delta po posledním historickém tasku a souhlasí s public step counts;
+bezpečné generation lines jsou `/tmp/jo-tools-generation-lines.txt`, E2E delta
+navíc v jeho evidence directory. Model alias create, debug config/agent,
+version/help, model tags/show/ps a sandbox preflight nejsou inference. Fake unit,
+DB/queue/worktree testy nevykonaly skutečné provider generace.
+
+## Změny a omezení
+
+Implementační commit `d91189bf` byl pushnut do origin na
+`codex/opencode-tool-reliability`; následující dokumentační commit zaznamenává
+skutečný jediný E2E. Package-lock.json a verifier source jsou byte/diff beze změny.
+
+Změněny: local Ollama metadata/OPENCODE context checks/config, safe diagnostics a
+workspace preflight; OpenCode result parsing, executor/availability infrastructure
+metadata, orchestration/completion guard a regrese; nový direct tools test/script,
+Modelfile příklad, .env.example, české README/setup/usage/architecture/development/
+troubleshooting/opencode/repair-loop a tento report s effective config snapshoty.
+
+Neověřeno: přesná příčina jednotlivých historických read/glob chyb, úspěšný cloud
+review verdict a dokončený celý E2E. OpenCode dodání a verifier jsou nyní skutečně
+ověřené, reviewer failure není zastřená. Žádný Project Memory ani další milestone.
