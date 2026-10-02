@@ -325,3 +325,16 @@ Pro OpenCode konfiguruj lokální alias se skutečným modelovým `num_ctx`, viz
 Preflight a rozpoznaná local-worker infrastructure nepouští repair model ani cloud
 fallback. Worktree zůstane zachovaný. Failure report obsahuje bounded public tool
 kategorii/step reason; neobsahuje raw tool payload ani hidden reasoning.
+
+## Práce v dlouhodobém projektu
+
+V Repositories zaregistruj working tree; Projects nyní obsahují samostatné
+Project Model entity. Create project umožňuje vazby na více registrovaných
+repozitářů a nejvýše jeden primary. Detail ukládá goals, constraints,
+instructions, currentMilestone a explicitní manual memory. Overview vybere
+projekt a vázaný repository; TypeScript před Chief retrieval sestaví omezený
+kontext. Bez projektu dál funguje původní repository-only cesta.
+Task detail ukazuje immutable snapshot vybraných memory IDs a použité activity.
+Completed outcomes přidej explicitně přes Sync completed task outcomes nebo
+`npm run memory:sync -- <project-UUID>`; nic se automaticky neplánuje.
+[Úplný postup, TypeScript bridge, scoring a provenance](project-memory.md).

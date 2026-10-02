@@ -1,3 +1,6 @@
+import { projectQaMode, qaPlan } from './project-qa.js';
+import { planProjectGoal } from '../projects/context.js';
+import type { ProjectSubmissionContext } from '../projects/contracts.js';
 import { z } from 'zod';
 import { chiefInputSchema, validateDecision, validateGrounding } from '../chief/schema.js';
 import type { ChiefInput, ChiefDecision } from '../chief/schema.js';
@@ -8,12 +11,21 @@ import { safeText } from './mapping.js';
 export type MutationServices = {
   repository: (key: string) => Promise<ChiefInput['project'] | null>;
   plan: (input: ChiefInput) => Promise<ChiefDecision>;
-  submit: (decision: ChiefDecision) => Promise<SubmissionResult>;
+  projectPlan?: typeof planProjectGoal;
+  submit: (decision: ChiefDecision, options?: { projectContext?: ProjectSubmissionContext }) => Promise<SubmissionResult>;
   answer: (id: string, answer: string) => Promise<{ taskId: string; taskStatus: string; status: string }>;
   abandon: (taskId: string) => Promise<void>;
 };
 export async function delegate(value: unknown, services: MutationServices) {
-  const { goal, projectKey } = delegateInputSchema.parse(value);
+  const { goal, projectKey, projectId, repositoryId } = delegateInputSchema.parse(value);
+  if (projectId) {
+    if (!services.projectPlan) throw new Error('Project planning is unavailable.');
+    const planned = await services.projectPlan({ projectId, userGoal: goal, ...(repositoryId ? { repositoryId } : {}) });
+    const decision = validateDecision(planned.decision);
+    if (planned.input) validateGrounding(decision, planned.input);
+    const submitted = await services.submit(decision, planned.submission ? { projectContext: planned.submission } : {});
+    return delegationResult(submitted, decision);
+  }
   const project = projectKey ? await services.repository(projectKey) : undefined;
   if (projectKey && !project) throw new Error('Project is no longer available.');
   const input = chiefInputSchema.parse({ userGoal: goal, ...(project ? { project } : {}) });
@@ -24,6 +36,9 @@ export async function delegate(value: unknown, services: MutationServices) {
     if (!current || current.repositoryPath !== project?.repositoryPath) throw new Error('Project is no longer available.');
   }
   const submitted = await services.submit(decision);
+  return delegationResult(submitted, decision);
+}
+function delegationResult(submitted: SubmissionResult, decision: ChiefDecision) {
   if (submitted.action === 'create_task') return delegateResultSchema.parse({ action: submitted.action,
     taskId: submitted.task.id, title: safeText(submitted.task.title, 300), capability: submitted.capability,
     status: submitted.task.status, summary: safeText(decision.summary, 1000) });
@@ -45,5 +60,5 @@ export async function realMutationServices(): Promise<MutationServices> {
   const [{ planGoal }, { submitDecision }, { answerEscalation, abandonTask }, { getRepositoryContext }] = await Promise.all([
     import('../chief/chief.js'), import('../chief/submit-decision.js'), import('../escalations/service.js'), import('./queries.js'),
   ]);
-  return { plan: planGoal, submit: submitDecision, answer: answerEscalation, abandon: abandonTask, repository: getRepositoryContext };
+  return { projectPlan: value => planProjectGoal(value, projectQaMode() ? { plan: qaPlan } : {}), plan: projectQaMode() ? qaPlan : planGoal, submit: submitDecision, answer: answerEscalation, abandon: abandonTask, repository: getRepositoryContext };
 }

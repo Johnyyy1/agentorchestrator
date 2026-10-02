@@ -26,13 +26,13 @@ export function repositoryIdentity(path: string) {
   return { key: createHash('sha256').update(normalized).digest('hex').slice(0, 24), name: safeText(basename(normalized) || normalized, 200), path: normalized };
 }
 export type TaskSummaryRow = Pick<typeof tasks.$inferSelect, 'id' | 'title' | 'status' | 'category' | 'createdAt' | 'updatedAt'> & {
-  repositoryPath: string | null; capability: string | null;
+  projectId?: string | null; projectLabel?: string | null; repositoryPath: string | null; capability: string | null;
 };
 export type LatestRunRow = Pick<typeof runs.$inferSelect, 'taskId' | 'attempt' | 'worker' | 'startedAt'>;
 export function mapTask(row: TaskSummaryRow, latest?: LatestRunRow): TaskListItemDto {
   const project = row.repositoryPath ? repositoryIdentity(row.repositoryPath) : null;
   return { id: row.id, title: safeText(row.title, 300), status: safeText(row.status, 50), category: safeText(row.category, 50),
-    projectKey: project?.key ?? null, projectName: project?.name ?? null, capability: optionalText(row.capability, 100),
+    projectId: row.projectId ?? null, projectLabel: row.projectLabel ? safeText(row.projectLabel,200) : null, projectKey: project?.key ?? null, projectName: project?.name ?? null, capability: optionalText(row.capability, 100),
     worker: latest?.worker ?? null, attempt: latest?.attempt ?? 0, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
     startedAt: latest ? iso(latest.startedAt) : null };
 }

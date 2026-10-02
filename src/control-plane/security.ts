@@ -46,6 +46,7 @@ export function publicError(error: unknown, operation: string): { status: number
   const known = ['Escalation is not open.', 'Task is not waiting for a human.', 'Only a waiting_human task can be abandoned.',
     'Project is no longer available.', 'Escalation does not exist.', 'Task does not exist.'];
   if (known.includes(message)) return { status: 409, error: message };
+  if (operation.startsWith('project-')) return { status: 503, error: 'Project or memory operation failed. Check database migrations and local embedding readiness.' };
   if (operation === 'repository') return { status: 503, error: 'Repository registration failed. Check database availability and migrations.' };
   if (operation === 'delegate') return { status: 503, error: 'Chief planning or submission failed. Check Ollama, database and queue health. A pending task may have been retained; inspect Tasks before retrying.' };
   return { status: 503, error: 'The operation did not complete. Reload the decision to check its current state. If enqueue failed, the answer remains open.' };

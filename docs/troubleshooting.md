@@ -269,3 +269,27 @@ filesystem či shell permissions. Cwd/root/branch nebo sandbox probe failure a e
 ripgrep runtime chyba eskalují infrastructure a zachovají worktree bez coding repair.
 Unknown detail se z bezpečnostních důvodů neukládá; staré tool errors bez detailu
 nelze zpětně přesně vysvětlit. `opencode:tools:test` oddělí adaptér od orchestrace.
+
+## Projektová paměť
+
+- `npm run memory:check` vrátí readiness bez inference. Chybějící model:
+  `ollama pull qwen3-embedding:0.6b`; žádný cloud fallback.
+- Chybějící `vector`: použij PG16 pgvector image, původní volume/Compose project
+  name a `npm run db:migrate`. Nepoužívej reset ani `down -v`.
+- Collation warning po výměně image: porovnej původní OS variantu; ověřený
+  upgrade používá `0.8.6-pg16-trixie`. Nepřepisuj collation version bez skutečné
+  opravy/reindexace. Původní data chrání záloha před upgrade.
+- Dimension mismatch: adapter vyžaduje 1024 v model metadata i outputu;
+  embedding nikdy nedoplní/neseřízne. Ověř model a `memory:smoke`.
+- Paměť uložená bez indexace: po recovery použij Retry pending indexing nebo
+  `npm run memory:index -- <project-UUID>`. Task completion zůstává nezávislé.
+- Empty search: ověř projekt, archive stav, indexaci a model digest. Similarity
+  <0.2 se nevrací. Po změně embedding modelu V1 nemá hromadnou reindexaci.
+- Projekt bez jednoznačného repository: vyber bound repository nebo nastav
+  primary. Paused/archived projekt nejprve aktivuj.
+- Project changed during planning: znovu odešli goal po kontrole Tasks; snapshot
+  validation chrání původní verzi kontextu. [Detailní limity](project-memory.md).
+
+- Neustálé HMR a rozbitá hydration v dev worktree: zachovej explicitní Tailwind
+  source adresáře v `apps/control-plane/app/globals.css`; neskenuj `.next`.
+  Nespouštěj build a dev server současně nad stejnou `.next` složkou.

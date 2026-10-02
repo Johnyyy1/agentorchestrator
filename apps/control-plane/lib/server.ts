@@ -8,7 +8,7 @@ export { fixtureMode };
 export const overview = () => fixtureMode() ? Promise.resolve(fixtures().overview()) : queries.getOverview();
 export const tasks = (query: TaskQuery) => fixtureMode() ? Promise.resolve(fixtures().list(query)) : queries.getTasks(query);
 export const task = (id: string) => fixtureMode() ? Promise.resolve(fixtures().detail(id)) : queries.getTaskDetail(id);
-export const projects = () => fixtureMode() ? Promise.resolve(fixtures().projects()) : queries.getRepositorySummaries();
+export const repositories = () => fixtureMode() ? Promise.resolve(fixtures().projects()) : queries.getRepositorySummaries();
 export const decisions = (page = 1, project?: string) => {
   if (!fixtureMode()) return queries.getOpenEscalations({ page, all: true, ...(project ? { project } : {}) });
   const rows = fixtures().decisions().filter(e => !project || fixtures().detail(e.taskId)?.task.projectKey === project)
@@ -26,3 +26,12 @@ export async function load<T>(query: () => Promise<T>): Promise<{ ok: true; data
   try { return { ok: true, data: await query() }; }
   catch { return { ok: false }; }
 }
+
+export const projects = async () => fixtureMode() ? [] : (await import('../../../src/projects/store.js')).projectStore().then(s => s.listProjects());
+export const projectDetail = async (id: string, page = 1) => {
+  if (fixtureMode()) return null;
+  const store = await (await import('../../../src/projects/store.js')).projectStore();
+  const project = await store.getProject(id); if (!project) return null;
+  return { project, memories: await store.listMemories(id, page) };
+};
+export const repositoryOptions = async () => fixtureMode() ? [] : (await import('../../../src/control-plane/repositories.js')).registeredRepositories().then(rows => rows.map(r => ({ id: r.id, name: r.name })));

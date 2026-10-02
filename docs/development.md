@@ -6,6 +6,8 @@
 | --- | --- |
 | apps/control-plane/ | Next App Router, UI primitives, server bridge, HTTP routes a Playwright smoke |
 | src/control-plane/ | DTO, read modely, redakce, health cache, validované mutace a fixtures |
+| src/projects/ | Project contracts/store/context/submission a DB fixtures |
+| src/memory/ | Local embedding adapter, ranking, deterministic projector, readiness/CLI |
 | src/tasks/ | Zod TaskSpec, centrální sémantika, DB rows, createTask |
 | src/router/ | Legacy + capability route, recommendation a readiness |
 | src/workers/ | CLI wrappers a jeden implementation/verifier pokus |
@@ -42,8 +44,15 @@ frontend typecheck kontroluje UI i jeho sdílené TS importy.
 | control-plane:test | Pure DTO/activity/query/security/mutation/cache testy, fake Chief |
 | control-plane:db:test | Vlastní DB rows + cleanup, SQL/read-model integrace, žádný consumer |
 | control-plane:e2e | Playwright Chromium + izolovaný fixture dev server :3107, skutečné screenshoty |
+| memory:test | Fake embeddings, schema/context/ranking/API regrese bez DB/Ollama |
+| memory:db:test | Real PostgreSQL/pgvector, vlastní fixtures/queue, fake embedding a cleanup |
+| memory:browser:test | Real DB/UI, lokální embedding, fake Chief ask_human; :3118 + screenshoty + cleanup |
+| memory:check | DB/vector + Ollama tags/show; bez inference |
+| memory:smoke | Explicitní malá lokální embedding sada (query + 3 memories) |
+| memory:sync | Explicitní max. 50 completed tasks; project UUID a optional cursor; local embedding |
+| memory:index | Retry max. 30 neindexovaných project memories; local embedding |
 | typecheck | Kontrola TS včetně examples; bez DB/modelů |
-| test (`npm test`) | semantics:test + chief:unit + router:test + capability-router:test + opencode:pure + repair:unit + reviewer:pure + control-plane:test; bez reálné DB/modelů |
+| test (`npm test`) | semantics:test + chief:unit + router:test + capability-router:test + opencode:pure + repair:unit + reviewer:pure + control-plane:test + memory:test; bez reálné DB/modelů |
 | router:test | Routovací příklady; bez AI/DB |
 | semantics:test | Pure regrese konfliktního Chief/TaskSpec, routování a completion evidence; bez DB/inference |
 | chief:unit | node:test schémat/bridge a local HTTP fixtures; bez inference |
@@ -198,3 +207,13 @@ Vyžaduje macOS/OpenCode/Ollama a modelový `num_ctx` shodný s `LOCAL_CODING_CO
 vlastní fixture/worktree/report a nikdy nevolají cloud. Nejsou součástí `npm test`.
 Fake `opencode:unit` kontroluje mismatch před inferencí a OS hranice; DB
 `orchestration:test` kontroluje infrastructure stop i po redelivery/human answer.
+
+Project memory DB test se spouští na vývojové databázi po migraci, bez resetu:
+`npm run memory:db:test`. Browser QA vyžaduje lokální embedding model a používá
+`CONTROL_PLANE_PROJECT_QA=1`, zakázaný v production; nespouští Chief inference ani
+coding execution. [Architektura a upgrade](project-memory.md),
+[report milestone](project-memory-v1-report.md).
+
+Tailwind v4 používá v `app/globals.css` explicitní `source(none)` a `@source`
+pro `app` a `components`. V izolovaném checkoutu tím nevstupují generované `.next`
+soubory do detekce tříd. Browser QA a build spouštěj postupně: sdílejí `.next`.

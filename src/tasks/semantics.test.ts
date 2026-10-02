@@ -22,7 +22,7 @@ test("exact Chief regression is normalized before submission and routes to OpenC
     assert.equal(spec.category, "coding");
     assert.equal(routeCapability(spec, recommendation?.capability, availability).route.worker, "opencode");
     return { ...spec, id: "fixture", chief: recommendation!, repository: spec.repository!, queueName: queueName ?? "fixture",
-      status: "queued", orchestration: null, createdAt: new Date(), updatedAt: new Date() };
+      status: "queued", orchestration: null, projectId: null, projectContext: null, createdAt: new Date(), updatedAt: new Date() };
   } });
   assert.equal(calls, 1);
   assert.equal(regression.category, "utility", "Normalization must not mutate caller data.");

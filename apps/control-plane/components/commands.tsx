@@ -1,4 +1,5 @@
 'use client';
+import type { ProjectDto as ProjectModelDto } from '../../../src/projects/contracts.js';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,11 +15,14 @@ async function post(operation: string, value: unknown, key: string) {
   return data;
 }
 function Busy() { return <LoaderCircle size={15} className="busy-icon" aria-hidden="true" />; }
-export function CommandBar({ projects }: { projects: ProjectDto[] }) {
+export function CommandBar({ projects, models = [] }: { projects: ProjectDto[]; models?: ProjectModelDto[] }) {
   const router = useRouter(), lock = useRef(false), requestKey = useRef<string | null>(null);
+  const [modelId, setModelId] = useState('');
+  const model = models.find(m => m.id === modelId);
   const [goal, setGoal] = useState(''), [project, setProject] = useState(''), [pending, setPending] = useState(false);
   const [added, setAdded] = useState<ProjectDto | null>(null);
-  const inventory = added && !projects.some(p => p.key === added.key) ? [...projects, added] : projects;
+  const all = added && !projects.some(p => p.key === added.key) ? [...projects, added] : projects;
+  const inventory = model ? all.filter(r => model.repositories.some(b => b.key === r.key)) : all;
   const selected = inventory.find(p => p.key === project);
   const [result, setResult] = useState<DelegateResultDto | null>(null), [error, setError] = useState('');
   async function submit() {
@@ -26,7 +30,7 @@ export function CommandBar({ projects }: { projects: ProjectDto[] }) {
     lock.current = true; setPending(true); setError(''); setResult(null);
     requestKey.current ??= crypto.randomUUID();
     try {
-      const data = delegateResultSchema.parse(await post('delegate', { goal, ...(project ? { projectKey: project } : {}) }, requestKey.current));
+      const data = delegateResultSchema.parse(await post('delegate', { goal, ...(model ? { projectId: model.id, ...(project ? { repositoryId: model.repositories.find(r => r.key === project)?.repositoryId } : {}) } : project ? { projectKey: project } : {}) }, requestKey.current));
       setResult(data); router.refresh();
       if (data.action === 'create_task') { setGoal(''); requestKey.current = null; }
     } catch (e) { setError(e instanceof Error ? e.message : 'The connection was interrupted. Check Tasks before retrying.'); }
@@ -35,8 +39,8 @@ export function CommandBar({ projects }: { projects: ProjectDto[] }) {
   return <section className="command" aria-label="Delegate a goal"><form onSubmit={e => { e.preventDefault(); void submit(); }}>
     <label htmlFor="goal">What should Jonas OS do?</label><textarea id="goal" name="goal" rows={2} maxLength={4000} required disabled={pending} placeholder="Describe the next goal…" value={goal}
       onChange={e => { setGoal(e.target.value); requestKey.current = null; }} onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit(); } }} />
-    <div className="command-footer"><div><label className="sr-only" htmlFor="repository">Repository context</label><select id="repository" value={project} disabled={pending} onChange={e => { setProject(e.target.value); requestKey.current = null; }}><option value="">No repository context</option>{inventory.map(p => <option key={p.key} value={p.key} disabled={!p.available} title={p.path}>{p.name} · {p.path.length > 50 ? `…${p.path.slice(-49)}` : p.path}{!p.available ? p.registered ? " · unavailable" : " · register to use" : ""}</option>)}</select><span className="repository-context-path mono" title={selected?.path}>{selected?.path}</span><span className="command-hint">Local Chief plans · existing worker executes</span></div><button className="button primary" disabled={pending || !goal.trim() || Boolean(project && !selected?.available)}>{pending ? <Busy /> : <ArrowRight size={15} />}{pending ? 'Chief is planning…' : 'Delegate'}{!pending && <CornerDownLeft size={12} className="key-icon" />}</button></div>
-  </form><RepositoryRegistration disabled={pending} onAdded={entry => { setAdded(entry); setProject(entry.key); requestKey.current = null; }} />{selected && !selected.available && <p className="form-error">{selected.unavailableReason}</p>}{error && <p role="alert" className="form-error">{error}</p>}{result && <div role="status" className="command-result">{result.action === 'create_task' ? <><Check size={17} /><div><strong>Task queued · {result.title}</strong><p className="mono">{result.capability} · {result.taskId}</p><Link href={`/tasks/${result.taskId}`}>Inspect task <ArrowRight size={13} /></Link></div></> : result.action === 'ask_human' ? <div><strong>Chief needs clarification</strong><p>{result.question}</p><span className="muted">Add the answer to your goal and delegate again.</span></div> : <div><strong>No action needed</strong><p>{result.reason}</p></div>}</div>}</section>;
+    <div className="command-footer"><div><label htmlFor="project-model">Project</label><select id="project-model" value={modelId} disabled={pending} onChange={e => { setModelId(e.target.value); const next = models.find(m => m.id === e.target.value); setProject(next?.repositories.find(r => r.isPrimary)?.key ?? (next?.repositories.length === 1 ? next.repositories[0]!.key : '')); requestKey.current = null; }}><option value="">No project context</option>{models.map(m => <option key={m.id} value={m.id} disabled={m.status !== 'active'}>{m.name} · {m.status}</option>)}</select><label className="sr-only" htmlFor="repository">Repository context</label><select id="repository" value={project} disabled={pending} onChange={e => { setProject(e.target.value); requestKey.current = null; }}><option value="">No repository context</option>{inventory.map(p => <option key={p.key} value={p.key} disabled={!p.available} title={p.path}>{p.name} · {p.path.length > 50 ? `…${p.path.slice(-49)}` : p.path}{!p.available ? p.registered ? " · unavailable" : " · register to use" : ""}</option>)}</select><span className="repository-context-path mono" title={selected?.path}>{selected?.path}</span><span className="command-hint">Local Chief plans · existing worker executes</span></div><button className="button primary" disabled={pending || !goal.trim() || Boolean(project && !selected?.available)}>{pending ? <Busy /> : <ArrowRight size={15} />}{pending ? 'Chief is planning…' : 'Delegate'}{!pending && <CornerDownLeft size={12} className="key-icon" />}</button></div>
+  </form><RepositoryRegistration disabled={pending || Boolean(modelId)} onAdded={entry => { setAdded(entry); setProject(entry.key); requestKey.current = null; }} />{selected && !selected.available && <p className="form-error">{selected.unavailableReason}</p>}{error && <p role="alert" className="form-error">{error}</p>}{result && <div role="status" className="command-result">{result.action === 'create_task' ? <><Check size={17} /><div><strong>Task queued · {result.title}</strong><p className="mono">{result.capability} · {result.taskId}</p><Link href={`/tasks/${result.taskId}`}>Inspect task <ArrowRight size={13} /></Link></div></> : result.action === 'ask_human' ? <div><strong>Chief needs clarification</strong><p>{result.question}</p><span className="muted">Add the answer to your goal and delegate again.</span></div> : <div><strong>No action needed</strong><p>{result.reason}</p></div>}</div>}</section>;
 }
 export function RepositoryRegistration({ disabled = false, onAdded }: { disabled?: boolean; onAdded?: (entry: ProjectDto) => void }) {
   const router = useRouter(), lock = useRef(false), requestKey = useRef<string | null>(null);

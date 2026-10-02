@@ -1,4 +1,4 @@
-import { tasks, projects, load, parseTaskQuery } from '../../lib/server.js';
+import { tasks, repositories as repositoryInventory, load, parseTaskQuery } from '../../lib/server.js';
 import { categories, statuses, workers } from '../../../../src/control-plane/contracts.js';
 import { statusLabel } from '../../../../src/control-plane/format.js';
 import { PageHeader, TaskTable, Pagination, SystemError } from '../../components/primitives.js';
@@ -9,7 +9,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const input = await searchParams;
   let query;
   try { query = parseTaskQuery(input); } catch { return <><PageHeader eyebrow="WORK / 03" title="Tasks" /><p role="alert">Invalid task filters. <Link href="/tasks">Reset filters</Link></p></>; }
-  const result = await load(async () => { const [list, repositories] = await Promise.all([tasks(query), projects()]); return { list, repositories }; });
+  const result = await load(async () => { const [list, repos] = await Promise.all([tasks(query), repositoryInventory()]); return { list, repositories: repos }; });
   if (!result.ok) return <><LiveRefresh /><SystemError /></>;
   const { list, repositories } = result.data;
   return <><PageHeader eyebrow="WORK / 03" title="Tasks" description={`${list.total} task${list.total === 1 ? '' : 's'} in this view. Every attempt leaves a trace.`}><LiveRefresh active={list.items.some(t => ['running', 'repairing', 'reviewing'].includes(t.status))} /></PageHeader>

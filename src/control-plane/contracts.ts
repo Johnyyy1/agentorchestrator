@@ -1,3 +1,4 @@
+import { snapshotSchema } from '../projects/contracts.js';
 import { z } from 'zod';
 
 const text = z.string();
@@ -10,7 +11,7 @@ export const taskQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   q: text.trim().max(200).default(''),
   status: z.enum([...statuses, 'active', 'attention']).optional(), category: z.enum(categories).optional(),
-  worker: z.enum(workers).optional(), project: text.regex(/^[a-f0-9]{24}$/).optional(),
+  worker: z.enum(workers).optional(), projectId: z.uuid().optional(), project: text.regex(/^[a-f0-9]{24}$/).optional(),
   sort: z.enum(['updated', 'newest', 'status']).default('updated'),
 });
 export type TaskQuery = z.infer<typeof taskQuerySchema>;
@@ -23,7 +24,7 @@ export const projectSchema = z.object({
 export type ProjectDto = z.infer<typeof projectSchema>;
 export const taskItemSchema = z.object({
   id: z.uuid(), title: text, status: text, category: text,
-  projectKey: nullableText, projectName: nullableText,
+  projectKey: nullableText, projectName: nullableText, projectId: z.uuid().nullable().default(null), projectLabel: nullableText.default(null),
   capability: nullableText, worker: nullableText, attempt: z.number(),
   createdAt: date, updatedAt: date, startedAt: date.nullable(),
 });
@@ -74,7 +75,7 @@ export const timelineSchema = z.object({ id: text, kind: text, title: text, deta
 export type TimelineEventDto = z.infer<typeof timelineSchema>;
 export const taskDetailSchema = z.object({
   task: taskItemSchema.extend({ objective: text, acceptanceCriteria: z.array(text), context: z.array(text),
-    repository: nullableText, risk: text, difficulty: z.number(), maxAttempts: z.number(), textTruncated: z.boolean() }),
+    repository: nullableText, risk: text, difficulty: z.number(), maxAttempts: z.number(), textTruncated: z.boolean(), projectId: z.uuid().nullable().default(null), projectContext: snapshotSchema.nullable().default(null) }),
   runs: z.array(runSchema), reviews: z.array(reviewDtoSchema), decisions: z.array(escalationSchema),
   timeline: z.array(timelineSchema), historyTruncated: z.boolean(),
 });
@@ -85,7 +86,7 @@ export const providerSchema = z.object({
   lastSuccess: date.nullable(), lastFailure: date.nullable(), statsNote: text,
 });
 export type ProviderStatusDto = z.infer<typeof providerSchema>;
-export const delegateInputSchema = z.strictObject({ goal: text.trim().min(1).max(4000), projectKey: text.regex(/^[a-f0-9]{24}$/).optional() });
+export const delegateInputSchema = z.strictObject({ goal: text.trim().min(1).max(4000), projectKey: text.regex(/^[a-f0-9]{24}$/).optional(), projectId: z.uuid().optional(), repositoryId: z.uuid().optional() }).refine(v => !v.projectId || !v.projectKey, 'Use projectId with a bound repositoryId, or the legacy projectKey.').refine(v => !v.repositoryId || Boolean(v.projectId), 'repositoryId requires projectId.');
 export const delegateResultSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create_task'), taskId: z.uuid(), title: text, capability: text, status: text, summary: text }),
   z.object({ action: z.literal('ask_human'), question: text, summary: text }),

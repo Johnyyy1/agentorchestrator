@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Activity, ArrowUpRight, Box, CircleHelp, Layers3, ListTodo, PanelTop } from 'lucide-react';
-const items = [['/', 'Overview', PanelTop], ['/projects', 'Projects', Layers3], ['/tasks', 'Tasks', ListTodo], ['/decisions', 'Decisions', CircleHelp], ['/agents', 'Agents', Box], ['/activity', 'Activity', Activity]] as const;
+const items = [['/', 'Overview', PanelTop], ['/projects', 'Projects', Layers3], ['/repositories', 'Repositories', Layers3], ['/tasks', 'Tasks', ListTodo], ['/decisions', 'Decisions', CircleHelp], ['/agents', 'Agents', Box], ['/activity', 'Activity', Activity]] as const;
 export function Navigation() {
   const pathname = usePathname();
   return <>

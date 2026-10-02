@@ -1,3 +1,5 @@
+import { submissionContextSchema } from '../projects/contracts.js';
+import type { ProjectSubmissionContext } from '../projects/contracts.js';
 import { taskSpecSchema } from "../tasks/task-spec.js";
 import type { TaskSpec } from "../workers/types.js";
 import type { tasks } from "../db/schema.js";
@@ -6,23 +8,24 @@ import { ChiefError } from "./errors.js";
 import { validateDecision } from "./schema.js";
 import type { Recommendation } from "../router/recommendation.js";
 
-type TaskCreator = (task: TaskSpec, queueName?: string, recommendation?: Recommendation) => Promise<typeof tasks.$inferSelect>;
+type TaskCreator = (task: TaskSpec, queueName?: string, recommendation?: Recommendation, projectContext?: ProjectSubmissionContext) => Promise<typeof tasks.$inferSelect>;
 export type SubmissionResult =
   | { action: "create_task"; task: typeof tasks.$inferSelect; capability: Capability; workerBrief: string }
   | { action: "ask_human"; humanQuestion: string }
   | { action: "no_action" };
 
 export async function submitDecision(
-  value: unknown, options: { queueName?: string; createTask?: TaskCreator } = {},
+  value: unknown, options: { queueName?: string; createTask?: TaskCreator; projectContext?: ProjectSubmissionContext } = {},
 ): Promise<SubmissionResult> {
   const decision = validateDecision(value); // Revalidate even if the caller says it was validated.
   if (decision.action === "ask_human") return { action: decision.action, humanQuestion: decision.humanQuestion };
   if (decision.action === "no_action") return { action: decision.action };
   const spec = taskSpecSchema.parse(decision.task);
+  const projectContext = options.projectContext === undefined ? undefined : submissionContextSchema.parse(options.projectContext);
   // Lazy loading keeps pure planning/clarification independent of PostgreSQL configuration.
   try {
     const create = options.createTask ?? (await import("../tasks/create-task.js")).createTask;
-    const task = await create(spec, options.queueName, { capability: decision.capability, workerBrief: decision.workerBrief });
+    const task = await create(spec, options.queueName, { capability: decision.capability, workerBrief: decision.workerBrief }, projectContext);
     return { action: "create_task", task, capability: decision.capability, workerBrief: decision.workerBrief };
   } catch {
     throw new ChiefError("submission_failed", "Chief task submission failed. Check task persistence and queue health; createTask may retain a pending row. Do not retry blindly.");

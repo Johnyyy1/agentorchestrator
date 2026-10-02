@@ -274,17 +274,17 @@ verdict/severity/findings/otázky; DB uchovává concise veřejné findings bez 
 
 `apps/control-plane` je samostatný Next App Router workspace. Server components
 čtou Zod DTO z `src/control-plane`; bulk last-run lookup a bounded SQL projekce
-oddělují seznamy od logů. Task/run/review/escalation/events schema se nemění.
+oddělují seznamy od logů. Task lifecycle zůstává samostatný; nullable project association a immutable context snapshot se přidávají pouze při caller-scoped submission.
 UI mutations pouze validují lokální HTTP vstup a volají planGoal/submitDecision,
 answerEscalation a abandonTask. Transaction a status transitions nadále vlastní
 engine. Browser nikdy neurčuje workspace filesystem path, shell ani status.
 
 Readiness běží bez inference v coalesced 20s procesní cache. Cloud binary
 presence je unknown, nikoli důkaz auth. Routes se obnovují pollingem 4/15s
-podle activity a browser visibility. Projects jsou hash normalizovaného
-repository.path. Minimální `repositories` registry ukládá UUID, name, canonical
+podle activity a browser visibility. Repository skupiny používají hash normalizovaného
+repository.path; Projects mají vlastní UUID/slug. Minimální `repositories` registry ukládá UUID, name, canonical
 path (unique), createdAt a updatedAt; migrace `0004_loving_pretty_boy.sql`.
-Nemá roadmap ani semantic memory. Registration validuje Git root serverově;
+Project Model a semantic memory jsou v samostatných tabulkách. Registration validuje Git root serverově;
 delegace přijímá pouze key registrované a znovu ověřené cesty. Historické
 cesty jsou read-only skupiny do registrace. `JONAS_OS_REPOSITORIES` zajišťuje
 explicitní bootstrap bez hledání adresářů. Host/Origin kontrola,
@@ -335,3 +335,38 @@ nebo pathScope; žádný raw payload/reasoning. Známý model/runtime/config mis
 explicitní ripgrep bootstrap/execution failure vedou na infrastructure/waiting_human,
 bez dalšího Chief/coding/review. Generic tool/model chyby zůstávají execution a mají
 stávající repair lifecycle. Router eligibility, attempt cap a verifier se nemění.
+
+## Project Model + Semantic Memory V1
+
+```mermaid
+flowchart TD
+  U[User goal + caller projectId] --> R[TypeScript project / repository resolver]
+  R --> P[Static project fields + registry bindings]
+  R --> M[Local Ollama query embedding]
+  M --> V[PostgreSQL pgvector: project filter + max 30 candidates]
+  V --> H[Hybrid score + max 8 memories]
+  R --> A[Recent project activity: max 5 tasks]
+  P --> C[Bounded context: max 6400 characters]
+  H --> C
+  A --> C
+  C --> CH[Existing Local Chief: create_task / ask_human / no_action]
+  CH --> S[Validated submission + immutable snapshot]
+  S --> E[Existing frozen Execution Core]
+  E --> O[Persisted task outcome]
+  O --> SY[Explicit deterministic sync: max 50 completed tasks]
+  SY --> I[Memory row with provenance]
+  I --> EM[Local embedding outside task completion]
+  EM --> V
+```
+
+`projects` má identity, textová pole a active/paused/archived. Join table
+`project_repositories` používá existující registry IDs a partial unique primary.
+`project_memories` má mandatory provenance, duplicate hash a nullable
+vector(1024); model name+digest brání smíchání embedding spaces. Tasks mají
+nullable projectId/projectContext; insert transakčně validuje project version,
+binding i project-only IDs. Immutable DB trigger brání pozdějšímu přepisování.
+
+Memory je data, ne autorita: model nedostává project ID jako TaskSpec pole,
+DB tools, vektory ani hidden reasoning. Completion nevolá memory subsystem;
+explicitní sync projektuje allowlist public evidence. [Přesná schémata,
+scoring, limity, FK semantics a bezpečnost](project-memory.md).

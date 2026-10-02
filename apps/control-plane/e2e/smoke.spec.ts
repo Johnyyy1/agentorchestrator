@@ -76,7 +76,7 @@ test('operator workflow, local security and visual layouts', async ({ page, requ
   await expect(page.getByRole('heading', { name: 'Local Chief' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Strong coding' })).toBeVisible();
   await page.screenshot({ path: screenshot('agents-desktop.png'), fullPage: true });
-  await page.goto('/projects');
+  await page.goto('/repositories');
   await expect(page.getByRole('table')).toBeVisible();
   await page.getByRole('link', { name: 'investi', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'investi', exact: true })).toBeVisible();
@@ -120,7 +120,7 @@ test('first repository registration and fake-Chief delegation preserve validated
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/projects');
+    await page.goto('/repositories');
     const row = page.getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) });
     await expect(row).toContainText('No tasks');
     await expect(row.getByRole('cell').nth(1)).toHaveText('0');

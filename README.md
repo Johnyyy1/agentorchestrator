@@ -13,7 +13,7 @@ coding má bounded repair/review smyčku; další úkol po úspěchu se neplánu
 ## Co potřebuješ
 
 - Node.js **>=22.13**, doporučená řada **24** (`.nvmrc`), npm a Git.
-- PostgreSQL **16**, nejjednodušeji přes Docker Compose v tomto repozitáři.
+- PostgreSQL **16** s pgvector, nejjednodušeji přes Docker Compose v tomto repozitáři.
 - Pro coding úkoly přihlášený **Codex CLI** v `PATH`.
 - Pro ostatní úkoly přihlášený **Antigravity CLI** (`agy`) v `PATH`.
 - Pro Chief **Ollama** s lokálním `qwen3.5:9b-q4_K_M`.
@@ -61,7 +61,7 @@ neporovnává s očekávanou hodnotou.
 ## Lokální Control Plane
 
 Po základním setupu spusť `npm run control-plane:dev` a otevři
-[127.0.0.1:3000](http://127.0.0.1:3000). Overview, Projects, Tasks, Decisions,
+[127.0.0.1:3000](http://127.0.0.1:3000). Overview, Projects, Repositories, Tasks, Decisions,
 Agents a Activity čtou skutečná data a umožňují delegování přes Chief,
 answer/resume i potvrzované abandon. Pro vykonávání úkolů nech zvlášť běžet
 `npm run worker`; samotné UI consumer nespouští.
@@ -75,6 +75,10 @@ Bez DB/inference lze UI prohlédnout přes `npm run control-plane:fixtures`
 (explicitní simulace v paměti). [Setup, bezpečnost, limity a testy](docs/control-plane.md),
 [report ověření](docs/control-plane-report.md).
 
+Projekty nyní uchovávají cíle, omezení, milník a explicitní paměti. Před Chief
+plánováním TypeScript sestaví omezený kontext z lokálních embeddings a recent
+activity. Execution Core zůstává samostatný. [Project Model + Semantic Memory V1](docs/project-memory.md).
+
 ## Dokumentace
 
 | Dokument | Obsah |
@@ -87,6 +91,7 @@ Bez DB/inference lze UI prohlédnout přes `npm run control-plane:fixtures`
 | [Opravy a eskalace](docs/repair-loop.md) | Lifecycle, nezávislé review, maxAttempts, lidské CLI a restart |
 | [Lokální OpenCode](docs/opencode.md) | Capability policy, lokální setup, fallback a security boundary |
 | [Control Plane](docs/control-plane.md) | Lokální UI, routes, delegování, rozhodnutí, health a fixtures |
+| [Projekty a paměť](docs/project-memory.md) | Project Model, lokální embeddings, pgvector, retrieval, sync a snapshot |
 | [AGENTS.md](AGENTS.md) | Pokyny pro LLM včetně povinné aktualizace dokumentace |
 
 ## Současná omezení

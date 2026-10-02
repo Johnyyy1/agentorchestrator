@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Node.js + npm | Node >=22.13, doporučená řada 24 | Vždy |
 | Git | CLI v `PATH` | Klonování a repository coding |
-| PostgreSQL | 16; Docker Compose plugin nebo vlastní server | Ukládání a vykonávání úkolů |
+| PostgreSQL | 16 + pgvector; Docker Compose plugin nebo vlastní server | Ukládání a vykonávání úkolů |
 | Codex CLI | `exec --json`, `--ignore-user-config`, `--ignore-rules`, `sandbox` | Codex coding worker |
 | macOS Seatbelt | `/usr/bin/sandbox-exec` | Deterministický verifier; žádný unrestricted fallback |
 | Antigravity CLI | `agy -p`, `--output-format json`, `--print-timeout` | Research, planning, review, utility |
@@ -313,7 +313,7 @@ Zbytek provider konfigurace včetně LOCAL_CODING_*/OPENCODE_BIN zůstává beze
 ### Repository Registry V1
 
 Po aktualizaci aplikuj `npm run db:migrate` (nová tabulka `repositories`).
-První cestu přidej přes **+ Add repository** v Overview/Projects nebo nastav
+První cestu přidej přes **+ Add repository** v Overview/Repositories nebo nastav
 `JONAS_OS_REPOSITORIES` v root `.env`. Například jedna absolutní Git cesta či
 `["/absolute/path/to/first","/absolute/path/to/second"]`. Hodnotu můžeš získat
 příkazem `pwd -P` spuštěným v kořeni cílového checkoutu. Restartuj web po změně
@@ -329,3 +329,15 @@ normalizuje před execution, coding bez repository odmítá. General smoke pří
 `examples/tasks/read-only.json` je nyní utility přes Antigravity. Nový worktree
 stále vyžaduje explicitní provisioning dependencies, automatická instalace není
 součástí executoru. [Policy a routing tabulka](opencode.md#směrování).
+
+## Project Model a lokální paměť
+
+Po upgradu aplikuj `npm run db:migrate`. Compose používá
+`pgvector/pgvector:0.8.6-pg16-trixie`, stejné PostgreSQL major 16 a stejné volume.
+Před výměnou image zazálohuj DB a použij původní Compose project name; postup
+je v [nedestruktivním upgradu](project-memory.md#postgresql--upgrade).
+`MEMORY_EMBEDDING_MODEL=qwen3-embedding:0.6b` a
+`MEMORY_EMBEDDING_TIMEOUT_MS=30000` nastavují dedicated loopback adapter.
+Chybějící model se automaticky nestahuje: `ollama pull qwen3-embedding:0.6b`.
+`npm run memory:check` nedělá inference; `npm run memory:smoke` ji provede
+explicitně. [Konfigurace, limity a recovery](project-memory.md).

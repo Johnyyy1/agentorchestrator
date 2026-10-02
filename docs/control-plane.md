@@ -2,9 +2,10 @@
 
 Lokální operátorské rozhraní pro Jonas OS. Aplikace `apps/control-plane` používá
 Next.js App Router, React, TypeScript a Tailwind CSS. Existující orchestrátor,
-router, sandboxy, retry pravidla a Drizzle schéma zůstávají samostatným enginem.
+router, sandboxy a retry pravidla zůstávají samostatným enginem.
 Minimální registry používá tabulku `repositories` a migraci
-`0004_loving_pretty_boy.sql`; nejde o budoucí Project Model.
+`0004_loving_pretty_boy.sql`. Project Model + Semantic Memory V1 přidává
+samostatné doménové tabulky migrací `0005_overconfident_gladiator.sql`.
 
 ## Spuštění
 
@@ -57,8 +58,10 @@ systémové; build nestahuje fonty a UI nevyžaduje externí CDN.
 | Route | Účel |
 | --- | --- |
 | `/` | Delegování cíle, running/queued/waiting/failed/pending, aktivní a čekající úkoly, otevřené eskalace, recent activity |
-| `/projects` | Registrované repozitáře včetně nulového počtu úkolů, historické skupiny a registrace |
-| `/projects/[key]` | Aktivní/queued/completed/failed úkoly, rozhodnutí a recent activity daného repozitáře |
+| `/projects` | Skutečné projekty, status, milestone, primary repository, recent tasks a Create Project |
+| `/projects/[UUID]` | Projektová pole/vazby, editor, memory inspector/search/sync, recent tasks |
+| `/repositories` | Původní registry a historické repository skupiny |
+| `/repositories/[key]` | Úkoly/rozhodnutí/activity repozitáře; původní `/projects/[hash]` přesměruje sem |
 | `/tasks` | Vyhledávání title/objective/UUID, status/category/worker/repository filtry, řazení a stránkování |
 | `/tasks/[id]` | Final Result / Waiting for you / Failed, objective, acceptance criteria, lifecycle, attempts, verifier, review a workspace metadata |
 | `/decisions` | Eskalační inbox: otevřené první, potom resolved/cancelled, stránkování |
@@ -91,14 +94,14 @@ Historické cesty jsou viditelné, ale musíš je zaregistrovat před delegován
 
 ### První repozitář
 
-1. Po `npm run db:migrate` otevři Overview nebo Projects.
+1. Po `npm run db:migrate` otevři Overview nebo Repositories.
 2. Klikni **+ Add repository**, vlož absolutní cestu a potvrď **Add repository**.
 3. Server normalizuje cestu přes `realpath`, vyžaduje existující adresář a Git
    working tree; podadresář mapuje na Git root. `.git` i alias do `.git`, soubor,
    bare repo a neexistující cesta se odmítnou. Git běží s oddělenými argumenty,
    bez shell interpolace a zděděných `GIT_DIR`/`GIT_WORK_TREE` overrides.
 4. Unique index odmítne duplicitu včetně trailing slash, `..` a symlink aliasu.
-5. Overview novou položku vybere automaticky. Projects ji zobrazí i s 0 úkoly.
+5. Overview novou položku vybere automaticky. Repositories ji zobrazí i s 0 úkoly.
 
 Registry uchovává UUID, name, canonical path a created/updated timestamps.
 Nedostupná nebo přesměrovaná registrovaná cesta zůstává pro diagnostiku,
@@ -111,7 +114,8 @@ nebo JSON pole cest. Při čtení inventory/contextu server idempotentně zajist
 validní entries. Neplatnou cestu nezaregistruje, vypíše stručnou diagnostiku a
 ostatní položky zachová. Neplatný formát konfigurace je chyba. Žádné skenování
 home, directory browser ani čtení libovolných souborů nevzniká.
-Samotný text „Pokračuj na Investi“ nevytváří projektovou paměť; vyber repository.
+Pro „Pokračuj na Investi“ vytvoř Project Model a vyber projekt v Overview.
+Bez projektu zůstává původní repository-only delegace. [Project workflow](project-memory.md).
 
 ### Výsledek úkolu
 
@@ -166,7 +170,7 @@ API:
 | --- | --- |
 | `GET /api/providers` | Cheap readiness + aggregate DB use, bez inference |
 | `POST /api/commands/repository` | `path`; serverová validace a zápis registry |
-| `POST /api/commands/delegate` | `goal`, volitelně `projectKey`; Local Chief + submission |
+| `POST /api/commands/delegate` | `goal`, projectId + optional bound repositoryId nebo legacy projectKey; Chief + submission |
 | `POST /api/commands/answer` | `id`, `answer`; existující escalation service |
 | `POST /api/commands/abandon` | `taskId`, `confirmed: true`; existující abandonment service |
 
@@ -200,10 +204,11 @@ nikoli odhad začátku checks. Run startedAt je uložený čas založení runu, 
 může předcházet skutečnému worker startu. Audit worker_started zaznamenává start
 workeru zvlášť. Legacy flows doplňuje activity feed labels „Recorded …“.
 
-Projects nejsou plánovací doménovou entitou. Registry používá canonical Git
+Projects jsou samostatná UUID/slug entita. Registry používá canonical Git
 root; key zůstává hash normalizované cesty. Historické cesty se deduplikují
 normalizací řetězce bez procházení filesystemu; historický symlink alias může
-mít samostatnou skupinu. Neexistuje roadmap, procenta ani semantic memory.
+mít samostatnou skupinu. Projekty mají milestone a explicitní semantic memory;
+procenta ani autonomní plánování se neodvozují. [Kontrakty a limity](project-memory.md).
 
 ## Health a obnovování
 
@@ -278,13 +283,13 @@ výsledky původního milestone jsou v [reportu](control-plane-report.md).
 - Web nezjišťuje, zda běží queue consumer; queued state sám jeho dostupnost
   nedokládá. Worker se spouští samostatně.
 - Cloud readiness neověřuje přihlášení ani dostupnost modelu.
-- Repository Registry V1 neobsahuje roadmap, project model ani filesystem browser.
+- Repository Registry vlastní filesystem identity; Project Model je samostatný. Žádný filesystem browser.
 - Detail a output jsou bounded, plný diff není persisted. Historické záznamy
   s chybějícími metadata nevytvářejí domyšlené lifecycle stages.
 - Po restartu neexistuje durable HTTP idempotency; uncertain submission řeš
   inspekcí záznamů, ne slepým opakováním.
-- Remote access, více uživatelů, notifikace, schedules, semantic memory,
-  embeddings, autonomous next-task generation a GitHub nejsou součást V1.
+- Remote access, více uživatelů, notifikace, schedules, cloud embeddings,
+  autonomous next-task generation a GitHub nejsou součást V1.
 
 Chybějící worker summary samo není completion invariant ani historická
 evidence warning. Pokud poslední coding execution, workspace/Git, verifier
@@ -297,3 +302,14 @@ důvodem a eskalací `infrastructure`. Check `verifier` zaznamenává infrastruk
 selhání odděleně od běžných neúspěšných test/typecheck checks. Nedochází k UI
 redesignu ani k předstírání review/completion. Číslo provedeného coding pokusu
 zůstává historicky zachované; infrastruktura nespouští další coding pokus.
+
+## Projekty a paměť V1
+
+Overview má Project selector a Repository dropdown omezený na bound registry
+entries. Detail projektu umožňuje vytvořit a archivovat manual memory,
+prohlédnout mandatory provenance, hledat s relevance score a explicitně syncnout
+completed task outcomes. Task detail ukazuje immutable snapshot „why Chief knew
+this“. New APIs používají stejný Host/Origin/Zod/request-ID boundary;
+[endpointy, provenance, scoring a limity](project-memory.md#api-a-bezpečnost).
+Readiness paměti je `npm run memory:check`; retrieval/indexace nevstupuje do
+completion transakce. Browser QA: `npm run memory:browser:test`.

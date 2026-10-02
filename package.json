@@ -4,7 +4,7 @@
   "description": "Local task orchestrator with a PostgreSQL queue, Codex/Antigravity workers and an Ollama planner",
   "main": "index.js",
   "scripts": {
-    "test": "npm run semantics:test && npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:pure && npm run repair:unit && npm run reviewer:pure && npm run control-plane:test",
+    "test": "npm run semantics:test && npm run chief:unit && npm run router:test && npm run capability-router:test && npm run opencode:pure && npm run repair:unit && npm run reviewer:pure && npm run control-plane:test && npm run memory:test",
     "semantics:test": "tsx --test src/tasks/semantics.test.ts src/orchestration/completion.test.ts",
     "codex:test": "tsx src/test-codex.ts",
     "agy:test": "tsx src/test-antigravity.ts",
@@ -49,7 +49,14 @@
     "control-plane:e2e": "playwright test --config apps/control-plane/playwright.config.ts",
     "control-plane:db:test": "tsx src/control-plane/db-integration.ts",
     "verifier:unit": "tsx --test src/verification/verifier.test.ts",
-    "opencode:tools:test": "tsx src/test-opencode-tools.ts"
+    "opencode:tools:test": "tsx src/test-opencode-tools.ts",
+    "memory:check": "tsx src/memory/cli.ts check",
+    "memory:smoke": "tsx src/memory/cli.ts smoke",
+    "memory:sync": "tsx src/memory/cli.ts sync",
+    "memory:index": "tsx src/memory/cli.ts index",
+    "memory:test": "tsx --test src/memory/*.test.ts src/projects/*.test.ts",
+    "memory:db:test": "tsx src/projects/db-integration.ts",
+    "memory:browser:test": "playwright test --config apps/control-plane/playwright.project-memory.config.ts"
   },
   "engines": {
     "node": ">=22.13.0"

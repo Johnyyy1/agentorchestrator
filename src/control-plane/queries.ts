@@ -10,7 +10,7 @@ import { registeredRepositories, repositoryAvailability } from './repositories.j
 // Database imports are lazy: offline UI and production compilation do not need credentials.
 async function database() { return (await import('../db/index.js')).db; }
 export const taskColumns = {
-  id: tasks.id, title: sql<string>`left(${tasks.title}, 300)`, status: tasks.status, category: tasks.category,
+  id: tasks.id, projectId: tasks.projectId, projectLabel: sql<string | null>`(select name from projects where id=${tasks.projectId})`, title: sql<string>`left(${tasks.title}, 300)`, status: tasks.status, category: tasks.category,
   repositoryPath: sql<string | null>`${tasks.repository}->>'path'`, capability: sql<string | null>`${tasks.chief}->>'capability'`,
   createdAt: tasks.createdAt, updatedAt: tasks.updatedAt,
 };
@@ -35,6 +35,7 @@ async function whereTasks(query: TaskQuery): Promise<SQL | undefined> {
   if (query.q) filters.push(or(ilike(tasks.title, escapedSearch(query.q)), ilike(tasks.objective, escapedSearch(query.q)),
     ilike(sql`${tasks.id}::text`, escapedSearch(query.q)))!);
   if (query.worker) filters.push(sql`${tasks.id} in (select ${runs.taskId} from ${runs} where ${runs.worker} = ${query.worker})`);
+  if (query.projectId) filters.push(eq(tasks.projectId, query.projectId));
   if (query.project) {
     const paths = await projectPaths(query.project);
     filters.push(paths.length ? inArray(sql`${tasks.repository}->>'path'`, paths) : sql`false`);
@@ -207,7 +208,7 @@ export async function getTaskDetail(id: string) {
   const [task] = await db.select({ ...taskColumns, objective: sql<string>`left(${tasks.objective}, 16000)`,
     acceptanceCriteria: boundedTextArray(sql`${tasks.acceptanceCriteria}`, 50), context: boundedTextArray(sql`${tasks.context}`, 20),
     textTruncated: sql<boolean>`length(${tasks.objective}) > 16000 or jsonb_array_length(${tasks.acceptanceCriteria}) > 50 or jsonb_array_length(${tasks.context}) > 20
-      or exists (select 1 from jsonb_array_elements_text(${tasks.acceptanceCriteria} || ${tasks.context}) v where length(v) > 2000)`, risk: tasks.risk, difficulty: tasks.difficulty, maxAttempts: tasks.maxAttempts })
+      or exists (select 1 from jsonb_array_elements_text(${tasks.acceptanceCriteria} || ${tasks.context}) v where length(v) > 2000)`, risk: tasks.risk, difficulty: tasks.difficulty, maxAttempts: tasks.maxAttempts, projectId: tasks.projectId, projectContext: tasks.projectContext })
     .from(tasks).where(eq(tasks.id, id)).limit(1);
   if (!task) return null;
   const [rawRuns, rawReviews, rawDecisions, rawEvents] = await Promise.all([
@@ -227,7 +228,7 @@ export async function getTaskDetail(id: string) {
   return taskDetailSchema.parse({ task: { ...item, objective: safeText(task.objective, 16000),
     acceptanceCriteria: task.acceptanceCriteria.slice(0, 50).map(v => safeText(v, 2000)), context: task.context.slice(0, 20).map(v => safeText(v, 2000)),
     repository: task.repositoryPath ? safeText(repositoryIdentity(task.repositoryPath).path, 1000) : null,
-    risk: task.risk, difficulty: task.difficulty, maxAttempts: task.maxAttempts, textTruncated: task.textTruncated },
+    risk: task.risk, difficulty: task.difficulty, maxAttempts: task.maxAttempts, textTruncated: task.textTruncated, projectId: task.projectId, projectContext: task.projectContext ? { ...task.projectContext, retrievalQuery: safeText(task.projectContext.retrievalQuery,4000) } : null },
     runs: mappedRuns, reviews: mappedReviews, decisions,
     timeline: buildTimeline(item, mappedRuns, mappedReviews, decisions, rawEvents.slice(0, 500).map(row => mapActivity(row, task.title))),
     historyTruncated: rawRuns.length > 100 || rawReviews.length > 100 || rawDecisions.length > 100 || rawEvents.length > 500 });

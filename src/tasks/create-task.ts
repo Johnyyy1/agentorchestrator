@@ -1,6 +1,9 @@
+import type { ProjectSubmissionContext } from '../projects/contracts.js';
+import { validateProjectSubmission } from '../projects/submission.js';
 import { eq, sql } from "drizzle-orm";
 import { fromDrizzle } from "pg-boss";
-import { db } from "../db/index.js";
+import { db, pool } from "../db/index.js";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { tasks } from "../db/schema.js";
 import { boss, startQueue, TASK_QUEUE_NAME } from "../queue/boss.js";
 import type { TaskJob } from "../queue/boss.js";
@@ -14,11 +17,23 @@ export async function createTask(
   task: TaskSpec,
   queueName = TASK_QUEUE_NAME,
   recommendation?: Recommendation,
+  projectContext?: ProjectSubmissionContext,
 ): Promise<typeof tasks.$inferSelect> {
   const parsed = taskSpecSchema.parse(task);
   const chief = recommendation === undefined ? null : recommendationSchema.parse(recommendation);
   const spec = normalizeTaskSemantics(parsed, chief?.capability);
-  const [created] = await db.insert(tasks).values({ ...spec, chief, queueName, status: "pending" }).returning();
+  const insert = async () => {
+    if (!projectContext) return db.insert(tasks).values({ ...spec, chief, queueName, status: 'pending' }).returning();
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const context = await validateProjectSubmission(client, projectContext, spec);
+      const rows = await drizzle(client).insert(tasks).values({ ...spec, chief, queueName, status: 'pending', ...context }).returning();
+      await client.query('commit'); return rows;
+    } catch (error) { await client.query('rollback'); throw error; }
+    finally { client.release(); }
+  };
+  const [created] = await insert();
   if (!created) throw new Error("Task insert did not return a row.");
 
   try {

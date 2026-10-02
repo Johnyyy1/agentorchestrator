@@ -7,8 +7,9 @@ import { providerSchema } from '../../../src/control-plane/contracts.js';
 import { z } from 'zod';
 
 const subscribeToHydration = () => () => {};
+export function useHydrated() { return useSyncExternalStore(subscribeToHydration, () => true, () => false); }
 export function LocalTime({ value, timeOnly = false }: { value: string; timeOnly?: boolean }) {
-  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const hydrated = useHydrated();
   const date = new Date(value);
   const label = hydrated ? new Intl.DateTimeFormat(undefined, timeOnly
     ? { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }

@@ -33,7 +33,7 @@ export function createFixtureStore() {
     acceptanceCriteria: ['Existing behavior remains compatible.', 'Tests cover the changed behavior.', 'Typecheck completes without errors.'],
     maxAttempts: 3, repository: { path: `/development/fixtures/${project!.toLowerCase()}`, baseBranch: 'main' },
     chief: { capability: capability as 'local-coding', workerBrief: 'Explicit development fixture.' },
-    queueName: 'control-plane.fixture.only', orchestration: null, createdAt: at(120 - index * 10), updatedAt: at(index === 0 ? 0 : index * 3),
+    queueName: 'control-plane.fixture.only', orchestration: null, projectId: null, projectContext: null, createdAt: at(120 - index * 10), updatedAt: at(index === 0 ? 0 : index * 3),
   }));
   const registry = new Map([...new Set(taskRows.map(t => t.repository!.path))].map(path => [path, randomUUID()]));
   const runRows: Array<typeof runs.$inferSelect> = [];
